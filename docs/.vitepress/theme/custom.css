@@ -110,6 +110,11 @@
    ARTICLE CONTENT
    ═══════════════════════════════════════════════ */
 
+/* ArticleMeta.vue 已渲染标题，隐藏 VitePress 自动生成的第一个 h1 避免重复 */
+.vp-doc h1:first-child {
+  display: none;
+}
+
 /* Wider content area */
 .VPDoc .container {
   max-width: 900px !important;
