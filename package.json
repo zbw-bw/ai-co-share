@@ -1,6 +1,7 @@
 {
   "name": "ai-co-share",
   "version": "1.0.0",
+  "type": "module",
   "description": "团队 AI 技术学习分享仓库",
   "scripts": {
     "docs:dev": "vitepress dev docs",

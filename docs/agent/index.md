@@ -2,6 +2,8 @@
 
 Agent 框架、工作流、Multi-Agent、新 Agent 工具等。
 
-## 文章列表
+<script setup>
+import { data as articles } from './articles.data.ts'
+</script>
 
-<!-- 新文章放在这里 -->
+<ArticleList :articles="articles" />

@@ -2,6 +2,8 @@
 
 大模型相关：原理、微调、RAG、提示工程等。
 
-## 文章列表
+<script setup>
+import { data as articles } from './articles.data.ts'
+</script>
 
-<!-- 新文章放在这里 -->
+<ArticleList :articles="articles" />
