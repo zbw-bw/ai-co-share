@@ -123,9 +123,8 @@ const stats = [
 
         <!-- Quick share hint -->
         <div class="hero-hint">
-          <span class="hint-label">在 CatDesk 中输入</span>
-          <span class="hint-code">/ai-co-share &lt;URL&gt;</span>
-          <span class="hint-label">即可快速分享</span>
+          <span class="hint-label">在 Claude Code 中使用</span>
+          <span class="hint-code">/ai-co-share &lt;URL&gt; [llm/agent/tools/papers]</span>
         </div>
       </div>
 

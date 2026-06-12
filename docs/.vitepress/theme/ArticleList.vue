@@ -27,7 +27,7 @@ function formatDate(dateStr: string) {
     <div v-if="!articles.length" class="empty-state">
       <div class="empty-icon">📭</div>
       <p class="empty-text">{{ emptyText ?? '暂无文章，快来第一个分享吧！' }}</p>
-      <p class="empty-hint">在 CatDesk 中输入 <span class="hint-cmd">/ai-co-share &lt;URL&gt;</span> 即可分享</p>
+      <p class="empty-hint">在 Claude Code 中使用 <span class="hint-cmd">/ai-co-share &lt;URL&gt; [llm/agent/tools/papers]</span> 即可分享</p>
     </div>
 
     <!-- Article cards -->
