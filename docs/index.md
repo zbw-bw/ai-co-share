@@ -8,22 +8,22 @@ hero:
   actions:
     - theme: brand
       text: 最新周报
-      link: /weekly/
+      link: /ai-co-share/weekly/
     - theme: alt
       text: 浏览全部
-      link: /llm/
+      link: /ai-co-share/llm/
 
 features:
   - title: 🧠 LLM
     details: 大模型原理、微调、RAG、提示工程
-    link: /llm/
+    link: /ai-co-share/llm/
   - title: 🤖 Agent
     details: Agent 框架、工作流、Multi-Agent、新工具
-    link: /agent/
+    link: /ai-co-share/agent/
   - title: 🛠️ Tools
     details: Claude Code、Skills、Hooks、效率工具
-    link: /tools/
+    link: /ai-co-share/tools/
   - title: 📄 Papers
     details: 论文精读、前沿研究
-    link: /papers/
+    link: /ai-co-share/papers/
 ---
