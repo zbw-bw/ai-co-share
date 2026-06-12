@@ -27,7 +27,7 @@ function formatDate(dateStr: string) {
     <div v-if="!articles.length" class="empty-state">
       <div class="empty-icon">📭</div>
       <p class="empty-text">{{ emptyText ?? '暂无文章，快来第一个分享吧！' }}</p>
-      <code class="empty-hint">/ai-co-share &lt;URL&gt;</code>
+      <p class="empty-hint">在 CatDesk 中输入 <span class="hint-cmd">/ai-co-share &lt;URL&gt;</span> 即可分享</p>
     </div>
 
     <!-- Article cards -->
@@ -91,13 +91,18 @@ function formatDate(dateStr: string) {
 }
 
 .empty-hint {
-  font-family: 'JetBrains Mono', monospace;
   font-size: 0.82rem;
-  padding: 5px 14px;
-  background: var(--vp-c-bg-soft);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
+  color: var(--vp-c-text-3);
+  margin: 0;
+}
+
+.hint-cmd {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82em;
   color: var(--vp-c-brand-1);
+  background: none;
+  border: none;
+  padding: 0;
 }
 
 /* ── Article card ────────────────────── */

@@ -123,31 +123,12 @@ const stats = [
 
         <!-- Quick share hint -->
         <div class="hero-hint">
-          <span class="hint-label">快速分享</span>
-          <code class="hint-code">/ai-co-share &lt;URL&gt;</code>
+          <span class="hint-label">在 CatDesk 中输入</span>
+          <span class="hint-code">/ai-co-share &lt;URL&gt;</span>
+          <span class="hint-label">即可快速分享</span>
         </div>
       </div>
 
-      <!-- Decorative card preview -->
-      <div class="hero-visual" aria-hidden="true">
-        <div class="preview-card">
-          <div class="preview-header">
-            <span class="preview-dot red" /><span class="preview-dot yellow" /><span class="preview-dot green" />
-            <span class="preview-title">最新分享</span>
-          </div>
-          <div class="preview-body">
-            <div class="preview-line w-3/4" />
-            <div class="preview-line w-1/2" />
-            <div class="preview-tags">
-              <span class="preview-tag green">LLM</span>
-              <span class="preview-tag blue">Agent</span>
-            </div>
-            <div class="preview-line w-full" />
-            <div class="preview-line w-5/6" />
-            <div class="preview-line w-2/3" />
-          </div>
-        </div>
-      </div>
     </main>
 
     <!-- Categories -->
@@ -338,17 +319,16 @@ const stats = [
   position: relative;
   z-index: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 48px;
+  text-align: center;
   padding: 96px 48px 80px;
-  max-width: 1200px;
+  max-width: 860px;
   margin: 0 auto;
 }
 
 .hero-content {
-  flex: 1;
-  max-width: 600px;
+  width: 100%;
   animation: fadeUp 0.7s ease both;
 }
 
@@ -370,7 +350,7 @@ const stats = [
   font-weight: 500;
   color: #10b981;
   letter-spacing: 0.02em;
-  margin-bottom: 32px;
+  margin: 0 auto 32px;
 }
 
 .badge-pulse {
@@ -423,6 +403,7 @@ const stats = [
   display: flex;
   gap: 32px;
   margin-bottom: 40px;
+  justify-content: center;
 }
 
 .stat-item {
@@ -452,6 +433,7 @@ const stats = [
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 28px;
+  justify-content: center;
 }
 
 .btn-primary {
@@ -501,6 +483,8 @@ const stats = [
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  justify-content: center;
+  width: 100%;
 }
 
 .hint-label {
@@ -513,99 +497,11 @@ const stats = [
 
 .hint-code {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8rem;
-  padding: 4px 12px;
-  background: rgba(16,185,129,0.07);
-  border: 1px solid rgba(16,185,129,0.18);
-  border-radius: 6px;
+  font-size: 0.82rem;
   color: #10b981;
-}
-
-/* ── Hero Visual ─────────────────────── */
-.hero-visual {
-  flex-shrink: 0;
-  animation: fadeUp 0.7s 0.2s ease both;
-}
-
-.preview-card {
-  width: 320px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
-}
-
-.preview-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 14px 18px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  background: rgba(255,255,255,0.02);
-}
-
-.preview-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-}
-.preview-dot.red    { background: #ff5f57; }
-.preview-dot.yellow { background: #febc2e; }
-.preview-dot.green  { background: #28c840; }
-
-.preview-title {
-  margin-left: 8px;
-  font-size: 0.78rem;
-  color: #475569;
   font-weight: 500;
 }
 
-.preview-body {
-  padding: 20px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.preview-line {
-  height: 10px;
-  background: rgba(255,255,255,0.07);
-  border-radius: 5px;
-  animation: shimmer 2s ease-in-out infinite;
-}
-
-.preview-line.w-3\/4 { width: 75%; }
-.preview-line.w-1\/2 { width: 50%; }
-.preview-line.w-full { width: 100%; }
-.preview-line.w-5\/6 { width: 83%; }
-.preview-line.w-2\/3 { width: 66%; }
-
-@keyframes shimmer {
-  0%, 100% { opacity: 0.5; }
-  50%       { opacity: 1; }
-}
-
-.preview-tags {
-  display: flex;
-  gap: 6px;
-}
-
-.preview-tag {
-  font-size: 0.7rem;
-  padding: 3px 10px;
-  border-radius: 100px;
-  font-weight: 500;
-}
-
-.preview-tag.green {
-  background: rgba(16,185,129,0.15);
-  color: #10b981;
-}
-
-.preview-tag.blue {
-  background: rgba(59,130,246,0.15);
-  color: #3b82f6;
-}
 
 /* ── Categories ──────────────────────── */
 .categories {
@@ -755,9 +651,7 @@ const stats = [
 
 /* ── Responsive ──────────────────────── */
 @media (max-width: 900px) {
-  .hero { flex-direction: column; padding: 72px 32px 60px; }
-  .hero-visual { display: none; }
-  .hero-content { max-width: 100%; }
+  .hero { padding: 72px 32px 60px; }
 }
 
 @media (max-width: 640px) {
