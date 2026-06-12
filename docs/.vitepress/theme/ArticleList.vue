@@ -27,7 +27,11 @@ function formatDate(dateStr: string) {
     <div v-if="!articles.length" class="empty-state">
       <div class="empty-icon">📭</div>
       <p class="empty-text">{{ emptyText ?? '暂无文章，快来第一个分享吧！' }}</p>
-      <p class="empty-hint">在 Claude Code 中使用 <span class="hint-cmd">/ai-co-share &lt;URL&gt; [llm/agent/tools/papers]</span> 即可分享</p>
+      <div class="empty-hint">
+        <span class="hint-label">在 Claude Code 中使用</span>
+        <span class="hint-cmd">/ai-co-share &lt;URL&gt; [llm/agent/tools/papers]</span>
+        <span class="hint-label">上传你的分享</span>
+      </div>
     </div>
 
     <!-- Article cards -->
@@ -91,18 +95,24 @@ function formatDate(dateStr: string) {
 }
 
 .empty-hint {
-  font-size: 0.82rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.hint-label {
+  font-size: 0.78rem;
   color: var(--vp-c-text-3);
-  margin: 0;
+  font-weight: 500;
 }
 
 .hint-cmd {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.82em;
+  font-size: 0.82rem;
+  font-weight: 600;
   color: var(--vp-c-brand-1);
-  background: none;
-  border: none;
-  padding: 0;
 }
 
 /* ── Article card ────────────────────── */

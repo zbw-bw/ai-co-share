@@ -125,6 +125,7 @@ const stats = [
         <div class="hero-hint">
           <span class="hint-label">在 Claude Code 中使用</span>
           <span class="hint-code">/ai-co-share &lt;URL&gt; [llm/agent/tools/papers]</span>
+          <span class="hint-label">上传你的分享</span>
         </div>
       </div>
 
@@ -479,26 +480,24 @@ const stats = [
 
 /* Hint */
 .hero-hint {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  justify-content: center;
+  gap: 6px;
   width: 100%;
 }
 
 .hint-label {
-  font-size: 0.75rem;
-  color: #334155;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  color: #475569;
   font-weight: 500;
 }
 
 .hint-code {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   color: #10b981;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 
