@@ -1,0 +1,2169 @@
+# Final Review Package — UI + Packaging + README + Streaming Chat
+
+## Commits (full branch)
+371b6fd chore: remove replaced MainWindow and StatusBar
+835630b docs: comprehensive README with architecture, modules, and usage guide
+15ec99e feat: switch to pyproject.toml packaging, add CLI entry point
+689013b feat: rewire PetApp to use TrayApp with streaming ChatWorker
+ad9536a feat: add menu bar tray app with 4-tab panel and streaming chat widget
+095c753 feat: add preflight environment check and interactive model setup
+6c089bc feat: add streaming send_message_stream to ClaudeClient
+b092b6d feat: add Claude Code stream-json event parser
+
+## Stat
+ LICENSE                     |  21 +++
+ MANIFEST.in                 |   4 +
+ README.md                   | 306 +++++++++++++++++++++++++++++++++++++++++---
+ app/claude_client.py        |  28 +++-
+ app/main.py                 |  99 ++++++++------
+ app/preflight.py            | 120 +++++++++++++++++
+ app/stream_parser.py        |  68 ++++++++++
+ pyproject.toml              |  43 +++++++
+ requirements.txt            |   2 -
+ setup.py                    |  10 --
+ test_pipeline.py            |  95 --------------
+ tests/test_app_main.py      |  65 +++++-----
+ tests/test_claude_client.py |  50 ++++++++
+ tests/test_preflight.py     |  49 +++++++
+ tests/test_stream_parser.py |  92 +++++++++++++
+ tests/test_ui.py            |  68 ++++++++--
+ ui/activity_log_widget.py   |  94 ++++++++++++++
+ ui/chat_widget.py           |  89 ++++++++++++-
+ ui/main_window.py           |  37 ------
+ ui/overview_widget.py       |  58 +++++++++
+ ui/settings_widget.py       | 128 ++++++++++++++++++
+ ui/status_bar.py            |  37 ------
+ ui/tray_app.py              | 137 ++++++++++++++++++++
+ 23 files changed, 1420 insertions(+), 280 deletions(-)
+
+## Diff
+diff --git a/LICENSE b/LICENSE
+new file mode 100644
+index 0000000..7ea2ca3
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2026 doujianaodai
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/MANIFEST.in b/MANIFEST.in
+new file mode 100644
+index 0000000..e40497e
+--- /dev/null
++++ b/MANIFEST.in
+@@ -0,0 +1,4 @@
++include config.yaml
++include LICENSE
++include README.md
++include pet_mcp_server.py
+diff --git a/README.md b/README.md
+index 1661d74..2a4849e 100644
+--- a/README.md
++++ b/README.md
+@@ -1,41 +1,309 @@
+ # 逗叽脑袋 (doujianaodai)
+ 
+-桌面宠物 Agent — 基于 Hermes Agent 的被动屏幕监控助手。
++> 桌面宠物 Agent — 被动监控屏幕活动，记录你的学习与工作，随时对话回顾你的一天。
+ 
+-## 功能
++## ✨ 功能特性
+ 
+-- **被动屏幕监控** — 自动截取前台窗口、OCR 识别内容、理解你在做什么
+-- **活动记忆** — 以 Markdown 文档记录你的阅读和写作活动
+-- **三层记忆** — 单条活动 → 每日总结 → 周/月总结
+-- **对话问答** — 通过 Hermes Agent 回答"今天做了什么"等问题
+-- **Hermes Agent 能力** — Skills、Tools、MCP、Memory 全套 Agent 能力
++### 🖥️ 被动屏幕监控
++- 15 秒间隔截取前台窗口（macOS Quartz API）
++- PaddleOCR 本地文字识别，无需联网
++- 四状态行为状态机（IDLE → OBSERVING → ENGAGED → 生成摘要）
++- 仅记录深度活动（≥75 秒停留），自动过滤快速浏览
+ 
+-## 前置条件
++### 🧠 智能活动记忆
++- 本地 Ollama 小模型生成内容摘要（支持用户选择已安装模型）
++- 三层记忆架构：活动记录 → 每日总结 → 周/月总结
++- 全部以 Markdown 文件存储，无数据库依赖
++- 三层读取策略：索引 → 详情 → OCR 原文（按需加载）
+ 
+-- Windows 10+
+-- Python 3.11+
+-- [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+-- [Ollama](https://ollama.ai) + Qwen2.5-7B 模型
++### 💬 AI 对话（流式输出）
++- 通过 Claude Code CLI 桥接对话
++- MCP Server 提供记忆读取工具
++- 实时流式输出：思考过程、工具调用、回复文本
++- 支持问"今天做了什么"、"这周学了什么"
+ 
+-## 安装
++### 📊 日志与统计
++- 监控操作日志（状态转换、截图、摘要生成）
++- 对话日志（消息、耗时、模型）
++- 每日效果统计（专注度、活动时长）
++
++## 📦 安装
++
++### 前置条件
++
++| 依赖 | 版本 | 说明 |
++|------|------|------|
++| macOS | 12+ | 依赖 Quartz、AppKit |
++| Python | 3.11+ | 使用 match/case 等新语法 |
++| Ollama | latest | 本地 LLM 推理引擎 |
++| Claude Code | latest | AI 对话引擎 |
++
++### 1. 安装 Ollama
++
++```bash
++brew install ollama
++ollama serve              # 启动服务
++ollama pull qwen3:8b      # 下载推荐模型（或其他模型）
++```
++
++### 2. 安装 Claude Code
++
++```bash
++npm install -g @anthropic-ai/claude-code
++claude login              # 首次登录
++```
++
++### 3. 安装逗叽脑袋
++
++```bash
++pip install doujianaodai
++```
++
++或从源码安装：
+ 
+ ```bash
+-pip install -e .
++git clone https://github.com/your-username/doujianaodai.git
++cd doujianaodai
++pip install -e ".[dev]"
+ ```
+ 
+-## 使用
++## 🚀 快速开始
+ 
+ ```bash
+ doujianaodai
+ ```
+ 
+-## 配置
++首次运行会进行环境检查：
++
++```
++🔍 环境检查中...
++[✓] Python 3.11.9
++[✓] Ollama 运行中
++    可用模型: qwen3:8b, llama3:8b, gemma2:9b
++    ? 请选择用于活动摘要的模型 [qwen3:8b]:
++[✓] 模型已配置: qwen3:8b
++[✓] Claude Code v1.0.28
++[✓] 屏幕录制权限正常
++✅ 启动逗叽脑袋...
++```
++
++启动后：
++1. 菜单栏出现 🧠 图标
++2. 点击图标打开面板
++3. 在「聊天」标签页与 AI 对话
++4. 在「概览」查看今日统计
++5. 在「日志」查看活动记录
++6. 在「设置」调整参数
++
++### 屏幕录制权限
++
++macOS 需要授权屏幕录制权限：
++系统设置 → 隐私与安全性 → 屏幕录制 → 允许终端/Python
++
++## 🏗️ 架构
++
++```
++┌─────────────────────────────────────────────────┐
++│                   用户 macOS 桌面                 │
++└────────┬──────────────────────────┬──────────────┘
++         │ 截图                      │ 对话
++┌────────▼──────────┐    ┌──────────▼──────────────┐
++│  monitor/          │    │  app/claude_client.py    │
++│  screen_monitor.py │    │  (Popen + stream-json)   │
++│  ├─ screenshot.py  │    └──────────┬──────────────┘
++│  ├─ ocr.py         │               │
++│  ├─ behavior_state │    ┌──────────▼──────────────┐
++│  ├─ llm_client.py  │    │  pet_mcp_server.py      │
++│  └─ scene_classifier   │  (stdio MCP Server)      │
++└────────┬──────────┘    └──────────┬──────────────┘
++         │ 写入                      │ 读取
++┌────────▼──────────────────────────▼──────────────┐
++│              ~/.pet-memory/                       │
++│  ├─ activities/    活动 Markdown                  │
++│  ├─ index/         每日索引                       │
++│  ├─ summaries/     日/周/月总结                   │
++│  ├─ screenshots/   截图文件                       │
++│  ├─ ocr/           OCR 原始结果                   │
++│  └─ logs/          监控/对话/统计日志             │
++└──────────────────────────────────────────────────┘
++```
++
++### 模块说明
++
++#### app/ — 应用核心
++| 文件 | 职责 |
++|------|------|
++| `main.py` | 入口，编排监控/对话/UI，ChatWorker 流式消息分发 |
++| `claude_client.py` | Claude Code CLI 桥接，支持 `send_message` 和 `send_message_stream` |
++| `config.py` | YAML 配置加载，深度合并默认值 |
++| `preflight.py` | 环境校验（Python/Ollama/Claude Code/屏幕权限），交互式模型选择 |
++| `stream_parser.py` | Claude Code stream-json 事件解析器 |
++
++#### monitor/ — 屏幕监控
++| 文件 | 职责 |
++|------|------|
++| `screenshot.py` | macOS 前台窗口截图（Quartz CGWindowListCreateImage） |
++| `ocr.py` | PaddleOCR 文字识别引擎 |
++| `scene_classifier.py` | 场景分类（阅读/写作） |
++| `behavior_state.py` | 四状态行为状态机（IDLE/OBSERVING/ENGAGED/BROWSING） |
++| `text_similarity.py` | OCR 文本相似度（bigram Jaccard 系数） |
++| `llm_client.py` | Ollama 摘要生成（含系统提示词） |
++| `screen_monitor.py` | 监控主循环，协调截图→OCR→状态机→摘要 |
++| `ocr_store.py` | OCR 结果持久化 |
++| `idle_detector.py` | 用户空闲检测 |
++
++#### memory/ — 记忆存储
++| 文件 | 职责 |
++|------|------|
++| `activity_writer.py` | 活动 Markdown 写入 + 每日索引维护 |
++| `summary_generator.py` | 日/周/月总结生成（Ollama 调用） |
++| `screenshot_cleaner.py` | 截图/OCR/日志过期清理 |
++
++#### logs/ — 日志系统
++| 文件 | 职责 |
++|------|------|
++| `pet_logger.py` | MonitorLogger（操作日志）+ ChatLogger（对话日志）+ StatsCollector（统计） |
++
++#### ui/ — 用户界面
++| 文件 | 职责 |
++|------|------|
++| `tray_app.py` | 菜单栏应用（QSystemTrayIcon + 弹出面板） |
++| `chat_widget.py` | 聊天面板（流式输出：思考/工具/文本分区展示） |
++| `overview_widget.py` | 今日概览面板（截图数/活动数/时长统计） |
++| `activity_log_widget.py` | 活动日志面板（日期选择 + 列表 + 详情展开） |
++| `settings_widget.py` | 设置面板（模型/间隔/阈值/保留天数） |
++
++#### pet_mcp_server.py — MCP Server
++独立 stdio 服务，注册到 Claude Code 的 `settings.json`，提供 5 个工具：
++- `read_activity_index` — 第1层索引
++- `read_activity_detail` — 第2层详情（不含 OCR 原文）
++- `read_activity_raw` — 第3层 OCR 原文
++- `read_summary` — 日/周/月总结
++- `list_available_dates` — 可用日期列表
++
++### 数据目录结构
++
++```
++~/.pet-memory/
++├── activities/
++│   └── 2026-06-26/
++│       ├── activity_001.md
++│       └── activity_002.md
++├── index/
++│   └── 2026-06-26.md
++├── summaries/
++│   ├── daily/
++│   ├── weekly/
++│   └── monthly/
++├── screenshots/
++│   └── 2026-06-26/
++├── ocr/
++│   └── 2026-06-26/
++│       └── 14-30-00.txt
++└── logs/
++    ├── monitor/
++    │   └── 2026-06-26.md
++    ├── chat/
++    │   └── 2026-06-26.md
++    └── stats/
++        └── 2026-06-26.json
++```
++
++## ⚙️ 配置
++
++编辑 `config.yaml`（或通过设置面板修改）：
++
++```yaml
++monitor:
++  enabled: true
++  interval_seconds: 15        # 截图间隔（10-60 秒）
++  scenes: [reading, writing]  # 识别的场景类型
++  idle_timeout_seconds: 120   # 空闲超时
++  engage_threshold: 5         # 深度活动判定阈值（连续观察次数）
++
++screenshots:
++  quality: 75                 # JPEG 质量
++  cleanup_similarity: 0.9     # 相似截图清理阈值
++  retention_days: 7           # 截图保留天数
++
++ocr:
++  engine: paddleocr
++  lang: ch                    # OCR 语言
++  retention_days: 7           # OCR 结果保留天数
++
++llm:
++  local:
++    provider: ollama
++    model: qwen3:8b           # 由首次运行时交互选择
++    base_url: http://localhost:11434
++
++logs:
++  retention_days: 30          # 日志保留天数
++
++memory:
++  base_dir: ~/.pet-memory
++```
++
++## 🧪 测试
++
++```bash
++# 运行全部测试
++python -m pytest -v
++
++# 运行单个模块测试
++python -m pytest tests/test_behavior_state.py -v
++python -m pytest tests/test_stream_parser.py -v
++python -m pytest tests/test_ui.py -v
++```
+ 
+-编辑 `config.yaml` 修改截图间隔、OCR 语言、LLM 模型等参数。
++| 测试文件 | 覆盖模块 |
++|----------|----------|
++| `test_behavior_state.py` | 四状态行为状态机 |
++| `test_text_similarity.py` | bigram Jaccard 相似度 |
++| `test_ocr_store.py` | OCR 持久化 |
++| `test_pet_logger.py` | 三层日志系统 |
++| `test_stream_parser.py` | 流式事件解析器 |
++| `test_claude_client.py` | Claude Code CLI 桥接 |
++| `test_preflight.py` | 环境校验 |
++| `test_ui.py` | UI 组件（菜单栏/聊天/概览/日志/设置） |
++| `test_activity_writer.py` | 活动写入 + 索引 |
++| `test_summary_generator.py` | 总结生成 |
++| `test_screen_monitor.py` | 监控主循环 |
++| `test_mcp_server.py` | MCP Server |
++| `test_integration.py` | 端到端集成 |
+ 
+-## 开发
++## 🛠️ 开发
+ 
+ ```bash
++git clone https://github.com/your-username/doujianaodai.git
++cd doujianaodai
+ pip install -e ".[dev]"
+-pytest
++python -m pytest -v
+ ```
++
++### MCP Server 注册
++
++将以下内容添加到 Claude Code 的 `~/.claude/settings.json`：
++
++```json
++{
++  "mcpServers": {
++    "pet-memory": {
++      "command": "python",
++      "args": ["/absolute/path/to/pet_mcp_server.py"]
++    }
++  }
++}
++```
++
++## 📋 已知限制
++
++- 仅支持 macOS（依赖 Quartz、AppKit 框架）
++- 需要屏幕录制权限授权
++- PaddleOCR 首次加载较慢（需下载模型文件）
++- 截图仅限前台窗口，不支持多显示器
++- 本地 LLM 摘要质量取决于模型能力
++
++## 📄 License
++
++MIT
+diff --git a/app/claude_client.py b/app/claude_client.py
+index c33711e..fa55638 100644
+--- a/app/claude_client.py
++++ b/app/claude_client.py
+@@ -4,23 +4,24 @@ Claude Code handles its own authentication (OAuth login). The pet app
+ bridges the chat UI to Claude Code. Claude Code accesses activity memory
+ through a shared MCP server registered in its settings.
+ """
+ from __future__ import annotations
+ 
+ import json
+ import logging
+ import subprocess
+ import time
+ from datetime import datetime
+-from typing import Optional
++from typing import Generator, Optional
+ 
+ from logs.pet_logger import ChatLogger, StatsCollector
++from app.stream_parser import StreamEvent, parse_stream_event
+ 
+ logger = logging.getLogger(__name__)
+ 
+ 
+ class ClaudeClient:
+     def __init__(
+         self,
+         project_dir: str | None = None,
+         chat_logger: ChatLogger | None = None,
+         stats_collector: StatsCollector | None = None,
+@@ -65,20 +66,45 @@ class ClaudeClient:
+         except json.JSONDecodeError as e:
+             logger.error("Failed to parse Claude Code output: %s", e)
+             return None
+         except FileNotFoundError:
+             logger.error("Claude Code CLI not found")
+             return None
+         except Exception:
+             logger.exception("Failed to call Claude Code")
+             return None
+ 
++    def send_message_stream(self, text: str) -> Generator[StreamEvent, None, None]:
++        cmd = ["claude", "-p", text, "--output-format", "stream-json", "--verbose"]
++        if self._session_id:
++            cmd.extend(["--resume", self._session_id])
++
++        try:
++            proc = subprocess.Popen(
++                cmd,
++                stdout=subprocess.PIPE,
++                stderr=subprocess.PIPE,
++                text=True,
++                cwd=self._project_dir,
++            )
++            for line in proc.stdout:
++                event = parse_stream_event(line)
++                if event:
++                    if event.event_type == "done" and event.metadata.get("session_id"):
++                        self._session_id = event.metadata["session_id"]
++                    yield event
++            proc.wait()
++        except FileNotFoundError:
++            logger.error("Claude Code CLI not found")
++        except Exception:
++            logger.exception("Stream error in Claude Code call")
++
+     def _log(self, user_msg: str, response: str, duration: float, model: str):
+         now = datetime.now()
+         if self._chat_logger:
+             self._chat_logger.log_conversation(
+                 date=now.strftime("%Y-%m-%d"),
+                 time=now.strftime("%H:%M:%S"),
+                 session_id=self._session_id or "unknown",
+                 user_message=user_msg,
+                 assistant_response=response[:500],
+                 duration_sec=duration,
+diff --git a/app/main.py b/app/main.py
+index 647e0a0..8cd301a 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -1,54 +1,63 @@
++# app/main.py
+ """Application entry point — orchestrates monitor, Claude Code bridge, and UI."""
+ from __future__ import annotations
+ 
+ import logging
+ import sys
+ import os
+ 
+ from PyQt6.QtWidgets import QApplication
+ from PyQt6.QtCore import QTimer, QThread, pyqtSignal
+ 
+ from app.config import load_config
+ from app.claude_client import ClaudeClient
+ from monitor.screen_monitor import ScreenMonitor
+ from memory.summary_generator import SummaryGenerator
+ from logs.pet_logger import ChatLogger, StatsCollector
+-from ui.main_window import MainWindow
++from ui.tray_app import TrayApp
+ 
+ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
+ logger = logging.getLogger(__name__)
+ 
+ MEMORY_DIR = os.path.expanduser("~/.pet-memory")
+ 
+ 
+ class ChatWorker(QThread):
+-    response_ready = pyqtSignal(str)
++    stream_event = pyqtSignal(dict)
++    finished = pyqtSignal()
+     error_occurred = pyqtSignal(str)
+ 
+     def __init__(self, client: ClaudeClient, message: str):
+         super().__init__()
+         self._client = client
+         self._message = message
+ 
+     def run(self):
+-        response = self._client.send_message(self._message)
+-        if response:
+-            self.response_ready.emit(response)
+-        else:
+-            self.error_occurred.emit("获取回复失败，请确认 Claude Code 已登录。")
++        try:
++            for event in self._client.send_message_stream(self._message):
++                self.stream_event.emit(event.to_dict())
++        except Exception as e:
++            self.error_occurred.emit(f"对话出错: {e}")
++        self.finished.emit()
+ 
+ 
+ class PetApp:
+-    def __init__(self):
+-        config_path = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
+-        self._config = load_config(config_path)
++    def __init__(self, config: dict | None = None, config_path: str | None = None):
++        if config_path is None:
++            config_path = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
++        self._config_path = config_path
++
++        if config is not None:
++            self._config = config
++        else:
++            self._config = load_config(config_path)
+ 
+         os.makedirs(MEMORY_DIR, exist_ok=True)
+ 
+         self._stats = StatsCollector(MEMORY_DIR)
+         self._chat_logger = ChatLogger(MEMORY_DIR)
+ 
+         self._client = ClaudeClient(
+             chat_logger=self._chat_logger,
+             stats_collector=self._stats,
+         )
+@@ -60,81 +69,93 @@ class PetApp:
+             screenshot_quality=self._config["screenshots"]["quality"],
+             llm_base_url=self._config["llm"]["local"]["base_url"],
+             llm_model=self._config["llm"]["local"]["model"],
+             stats_collector=self._stats,
+         )
+         self._summary_gen = SummaryGenerator(
+             base_dir=MEMORY_DIR,
+             llm_base_url=self._config["llm"]["local"]["base_url"],
+             llm_model=self._config["llm"]["local"]["model"],
+         )
+-        self._window: MainWindow | None = None
++        self._tray: TrayApp | None = None
+         self._health_timer: QTimer | None = None
+         self._chat_worker: ChatWorker | None = None
+ 
+     def run(self):
+         app = QApplication(sys.argv)
++        app.setQuitOnLastWindowClosed(False)
+ 
+-        self._window = MainWindow(
++        self._tray = TrayApp(
++            config=self._config,
++            config_path=self._config_path,
+             on_message_sent=self._on_user_message,
+-            width=self._config["ui"]["window_width"],
+-            height=self._config["ui"]["window_height"],
+         )
+ 
+         self._start_services()
+-        self._window.show()
+ 
+         self._health_timer = QTimer()
+         self._health_timer.timeout.connect(self._check_health)
+         self._health_timer.start(30000)
+ 
+         exit_code = app.exec()
+         self._shutdown()
+         sys.exit(exit_code)
+ 
+     def _start_services(self):
+-        if self._window:
+-            self._window.status_bar.set_hermes_status(True)
+-            self._window.chat_widget.append_message(
+-                "system", "逗叽脑袋已启动，对话将通过 Claude Code 处理。"
+-            )
++        if self._tray:
++            self._tray.chat_widget.append_message("system", "逗叽脑袋已启动，对话将通过 Claude Code 处理。")
+ 
+         if self._config["monitor"]["enabled"]:
+             self._monitor.start()
+-            if self._window:
+-                self._window.status_bar.set_monitor_status(True)
++            if self._tray:
++                self._tray.update_monitor_status(True)
+ 
+         self._summary_gen.check_and_generate_pending()
+ 
++        if self._tray:
++            self._tray.activity_log_widget.set_base_dir(MEMORY_DIR)
++            self._tray.overview_widget.refresh(
++                stats_dir=str(os.path.join(MEMORY_DIR, "logs", "stats")),
++                index_dir=str(os.path.join(MEMORY_DIR, "index")),
++            )
++
+     def _on_user_message(self, text: str):
+-        if self._window:
+-            self._window.chat_widget.set_input_enabled(False)
++        if self._tray:
++            self._tray.chat_widget.set_input_enabled(False)
+ 
+         self._chat_worker = ChatWorker(self._client, text)
+-        self._chat_worker.response_ready.connect(self._on_response)
++        self._chat_worker.stream_event.connect(self._on_stream_event)
+         self._chat_worker.error_occurred.connect(self._on_error)
++        self._chat_worker.finished.connect(self._on_chat_finished)
+         self._chat_worker.start()
+ 
+-    def _on_response(self, response: str):
+-        if self._window:
+-            self._window.chat_widget.append_message("assistant", response)
+-            self._window.chat_widget.set_input_enabled(True)
++    def _on_stream_event(self, event: dict):
++        if self._tray:
++            self._tray.chat_widget.handle_stream_event(event)
++
++    def _on_chat_finished(self):
++        if self._tray:
++            self._tray.chat_widget.set_input_enabled(True)
++            self._tray.overview_widget.refresh(
++                stats_dir=str(os.path.join(MEMORY_DIR, "logs", "stats")),
++                index_dir=str(os.path.join(MEMORY_DIR, "index")),
++            )
+ 
+     def _on_error(self, error: str):
+-        if self._window:
+-            self._window.chat_widget.append_message("system", error)
+-            self._window.chat_widget.set_input_enabled(True)
++        if self._tray:
++            self._tray.chat_widget.append_message("system", error)
++            self._tray.chat_widget.set_input_enabled(True)
+ 
+     def _check_health(self):
+         monitor_ok = self._monitor.is_running()
+-        if self._window:
+-            self._window.status_bar.set_monitor_status(monitor_ok)
++        if self._tray:
++            self._tray.update_monitor_status(monitor_ok)
+ 
+     def _shutdown(self):
+         logger.info("Shutting down...")
+         self._monitor.stop()
+ 
+         from datetime import datetime
+         today = datetime.now().strftime("%Y-%m-%d")
+ 
+         self._stats.flush(today)
+         self._summary_gen.generate_daily(today)
+@@ -144,16 +165,22 @@ class PetApp:
+ 
+         cleanup_similar(MEMORY_DIR, today, self._config["screenshots"]["cleanup_similarity"])
+         cleanup_expired(MEMORY_DIR, self._config["screenshots"]["retention_days"])
+         cleanup_ocr_expired(MEMORY_DIR, self._config["ocr"].get("retention_days", 7))
+         cleanup_logs_expired(MEMORY_DIR, self._config.get("logs", {}).get("retention_days", 30))
+ 
+         logger.info("Shutdown complete")
+ 
+ 
+ def main():
+-    app = PetApp()
+-    app.run()
++    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config.yaml")
++    try:
++        from app.preflight import run_preflight
++        config = run_preflight(config_path)
++    except SystemExit:
++        return
++    pet = PetApp(config=config, config_path=config_path)
++    pet.run()
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/app/preflight.py b/app/preflight.py
+new file mode 100644
+index 0000000..5e2449c
+--- /dev/null
++++ b/app/preflight.py
+@@ -0,0 +1,120 @@
++# app/preflight.py
++from __future__ import annotations
++
++import os
++import subprocess
++import sys
++
++import requests
++import yaml
++
++
++def check_python() -> bool:
++    return sys.version_info >= (3, 11)
++
++
++def check_ollama(base_url: str = "http://localhost:11434") -> tuple[bool, list[str]]:
++    try:
++        resp = requests.get(f"{base_url}/api/tags", timeout=5)
++        if resp.status_code == 200:
++            data = resp.json()
++            models = [m["name"] for m in data.get("models", [])]
++            return True, models
++    except Exception:
++        pass
++    return False, []
++
++
++def check_claude_code() -> tuple[bool, str]:
++    try:
++        result = subprocess.run(
++            ["claude", "--version"],
++            capture_output=True, text=True, timeout=10,
++        )
++        if result.returncode == 0:
++            return True, result.stdout.strip()
++    except FileNotFoundError:
++        pass
++    except Exception:
++        pass
++    return False, ""
++
++
++def check_screen_capture() -> bool:
++    try:
++        from monitor.screenshot import capture_foreground_window
++        img, _, _ = capture_foreground_window()
++        return img is not None
++    except Exception:
++        return False
++
++
++def select_model(models: list[str], current: str | None) -> str:
++    if current and current in models:
++        return current
++    if not models:
++        return ""
++    print(f"    可用模型: {', '.join(models)}")
++    default = models[0]
++    choice = input(f"    ? 请选择用于活动摘要的模型 [{default}]: ").strip()
++    return choice if choice in models else default
++
++
++def _update_config_model(config_path: str, model: str):
++    if not os.path.exists(config_path):
++        config_data = {}
++    else:
++        with open(config_path, "r", encoding="utf-8") as f:
++            config_data = yaml.safe_load(f) or {}
++    config_data.setdefault("llm", {}).setdefault("local", {})["model"] = model
++    with open(config_path, "w", encoding="utf-8") as f:
++        yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False)
++
++
++def run_preflight(config_path: str) -> dict:
++    from app.config import load_config
++
++    print("🔍 环境检查中...")
++
++    if not check_python():
++        print(f"[✗] Python {sys.version_info.major}.{sys.version_info.minor} — 需要 3.11+")
++        sys.exit(1)
++    print(f"[✓] Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
++
++    config = load_config(config_path)
++    base_url = config["llm"]["local"]["base_url"]
++
++    ollama_ok, models = check_ollama(base_url)
++    if not ollama_ok:
++        print("[✗] Ollama 未运行")
++        print("    安装: brew install ollama")
++        print("    启动: ollama serve")
++        sys.exit(1)
++    print("[✓] Ollama 运行中")
++
++    current_model = config["llm"]["local"]["model"]
++    if current_model not in models:
++        chosen = select_model(models, None)
++        if not chosen:
++            print("[✗] 没有可用的 Ollama 模型，请先运行: ollama pull qwen3:8b")
++            sys.exit(1)
++        _update_config_model(config_path, chosen)
++        config = load_config(config_path)
++        print(f"[✓] 模型已配置: {chosen}")
++    else:
++        print(f"[✓] 模型已配置: {current_model}")
++
++    claude_ok, version = check_claude_code()
++    if not claude_ok:
++        print("[✗] Claude Code 未找到")
++        print("    安装: npm install -g @anthropic-ai/claude-code")
++        sys.exit(1)
++    print(f"[✓] Claude Code {version}")
++
++    if check_screen_capture():
++        print("[✓] 屏幕录制权限正常")
++    else:
++        print("[⚠] 屏幕录制权限未授权 — 请到 系统设置 > 隐私与安全 > 屏幕录制 中授权")
++
++    print("✅ 启动逗叽脑袋...")
++    return config
+diff --git a/app/stream_parser.py b/app/stream_parser.py
+new file mode 100644
+index 0000000..008f256
+--- /dev/null
++++ b/app/stream_parser.py
+@@ -0,0 +1,68 @@
++# app/stream_parser.py
++from __future__ import annotations
++
++import json
++from dataclasses import dataclass, field
++
++
++@dataclass
++class StreamEvent:
++    event_type: str      # "thinking" | "text" | "tool_use" | "tool_result" | "status" | "done"
++    content: str
++    metadata: dict = field(default_factory=dict)
++
++    def to_dict(self) -> dict:
++        return {"event_type": self.event_type, "content": self.content, "metadata": self.metadata}
++
++
++def parse_stream_event(line: str) -> StreamEvent | None:
++    line = line.strip()
++    if not line:
++        return None
++    try:
++        data = json.loads(line)
++    except (json.JSONDecodeError, ValueError):
++        return None
++
++    msg_type = data.get("type")
++
++    if msg_type == "system" and data.get("subtype") == "init":
++        model = data.get("model", "unknown")
++        return StreamEvent(event_type="status", content=f"已连接 {model}", metadata={"model": model})
++
++    if msg_type == "assistant":
++        message = data.get("message", data)
++        contents = message.get("content", [])
++        for item in contents:
++            item_type = item.get("type")
++            if item_type == "thinking":
++                return StreamEvent(event_type="thinking", content=item.get("thinking", ""))
++            if item_type == "text":
++                return StreamEvent(event_type="text", content=item.get("text", ""))
++            if item_type == "tool_use":
++                name = item.get("name", "")
++                return StreamEvent(
++                    event_type="tool_use",
++                    content=name,
++                    metadata={"input": item.get("input", {})},
++                )
++            if item_type == "tool_result":
++                result_content = item.get("content", "")
++                if isinstance(result_content, list):
++                    result_content = " ".join(
++                        part.get("text", "") for part in result_content if isinstance(part, dict)
++                    )
++                return StreamEvent(event_type="tool_result", content=str(result_content))
++        return None
++
++    if msg_type == "result":
++        return StreamEvent(
++            event_type="done",
++            content=data.get("result", ""),
++            metadata={
++                "session_id": data.get("session_id", ""),
++                "duration_ms": data.get("duration_ms", 0),
++            },
++        )
++
++    return None
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..3eca49f
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,43 @@
++[build-system]
++requires = ["setuptools>=68.0"]
++build-backend = "setuptools.build_meta"
++
++[project]
++name = "doujianaodai"
++version = "0.1.0"
++description = "桌面宠物 Agent — 被动屏幕监控 + 活动记忆 + AI 对话"
++readme = "README.md"
++license = {text = "MIT"}
++requires-python = ">=3.11"
++keywords = ["desktop-pet", "screen-monitor", "ai-agent", "ocr"]
++classifiers = [
++    "Development Status :: 3 - Alpha",
++    "Environment :: MacOS X",
++    "Programming Language :: Python :: 3.11",
++    "Topic :: Utilities",
++]
++dependencies = [
++    "PyQt6>=6.6.0",
++    "pyobjc-framework-Quartz>=10.0; sys_platform=='darwin'",
++    "pyobjc-framework-Cocoa>=10.0; sys_platform=='darwin'",
++    "psutil>=5.9.0",
++    "Pillow>=10.0.0",
++    "paddleocr>=2.7.0",
++    "paddlepaddle>=2.6.0",
++    "scikit-image>=0.22.0",
++    "numpy>=1.26.0",
++    "PyYAML>=6.0",
++    "requests>=2.31.0",
++]
++
++[project.optional-dependencies]
++dev = ["pytest>=7.0"]
++
++[project.scripts]
++doujianaodai = "app.main:main"
++
++[tool.setuptools.packages.find]
++include = ["app*", "monitor*", "memory*", "logs*", "ui*"]
++
++[tool.setuptools.package-data]
++"*" = ["config.yaml"]
+diff --git a/requirements.txt b/requirements.txt
+index 3c2ed04..a05b590 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -2,12 +2,10 @@ PyQt6>=6.6.0
+ pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"
+ pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+ psutil>=5.9.0
+ Pillow>=10.0.0
+ paddleocr>=2.7.0
+ paddlepaddle>=2.6.0
+ scikit-image>=0.22.0
+ numpy>=1.26.0
+ PyYAML>=6.0
+ requests>=2.31.0
+-anthropic>=0.34.0
+-ollama>=0.3.0
+diff --git a/setup.py b/setup.py
+deleted file mode 100644
+index 3403ed3..0000000
+--- a/setup.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-from setuptools import setup, find_packages
+-
+-setup(
+-    name="doujianaodai",
+-    version="0.1.0",
+-    packages=find_packages(),
+-    install_requires=open("requirements.txt").read().splitlines(),
+-    entry_points={"console_scripts": ["doujianaodai=app.main:main"]},
+-    python_requires=">=3.11",
+-)
+diff --git a/test_pipeline.py b/test_pipeline.py
+deleted file mode 100644
+index dd509fa..0000000
+--- a/test_pipeline.py
++++ /dev/null
+@@ -1,95 +0,0 @@
+-"""一键验证截图 → OCR → 小模型摘要 全链路"""
+-import os
+-import sys
+-import time
+-
+-MEMORY_DIR = os.path.expanduser("~/.pet-memory")
+-
+-def test_screenshot():
+-    print("=" * 50)
+-    print("[1/3] 测试截图能力（前台窗口）")
+-    print("=" * 50)
+-    from monitor.screenshot import capture_foreground_window
+-
+-    result = capture_foreground_window()
+-    if result is None or result[0] is None:
+-        print("  ❌ 截图失败！请检查屏幕录制权限：")
+-        print("     系统设置 → 隐私与安全性 → 屏幕录制 → 勾选终端/iTerm")
+-        return None, None
+-
+-    image, app_name, window_title = result
+-    print(f"  当前前台应用: {app_name}")
+-    print(f"  窗口标题: {window_title}")
+-
+-    save_path = os.path.join(MEMORY_DIR, "test_screenshot.png")
+-    image.save(save_path)
+-    print(f"  ✅ 截图成功: {image.size[0]}x{image.size[1]}")
+-    print(f"  截图已保存: {save_path}")
+-    print(f"  请打开查看是否正确: open {save_path}")
+-    return image, app_name
+-
+-
+-def test_ocr(image):
+-    print()
+-    print("=" * 50)
+-    print("[2/3] 测试 OCR 文字识别")
+-    print("=" * 50)
+-    from monitor.ocr import recognize_text
+-
+-    start = time.time()
+-    text = recognize_text(image)
+-    elapsed = time.time() - start
+-
+-    if not text.strip():
+-        print(f"  ⚠️ 未识别到文字（耗时 {elapsed:.1f}s）")
+-        print("  可能前台窗口没有文字内容，属正常情况")
+-        return ""
+-
+-    lines = text.strip().split("\n")
+-    print(f"  ✅ 识别到 {len(lines)} 行文字（耗时 {elapsed:.1f}s）")
+-    print("  前5行内容:")
+-    for line in lines[:5]:
+-        print(f"    | {line}")
+-    if len(lines) > 5:
+-        print(f"    ... 还有 {len(lines) - 5} 行")
+-    return text
+-
+-
+-def test_llm_summary(app_name, ocr_text):
+-    print()
+-    print("=" * 50)
+-    print("[3/3] 测试 Ollama 小模型摘要（qwen3:8b）")
+-    print("=" * 50)
+-    from monitor.llm_client import generate_summary
+-
+-    start = time.time()
+-    summary, detail = generate_summary(
+-        ocr_text=ocr_text if ocr_text else "（无文字内容）",
+-        window_title=app_name,
+-        scene_type="reading",
+-    )
+-    elapsed = time.time() - start
+-
+-    if not summary:
+-        print("  ❌ 摘要生成失败！请确认 Ollama 正在运行: ollama serve")
+-        return
+-
+-    print(f"  ✅ 摘要生成成功（耗时 {elapsed:.1f}s）")
+-    print(f"  摘要: {summary}")
+-    print(f"  详细: {detail}")
+-
+-
+-if __name__ == "__main__":
+-    os.makedirs(MEMORY_DIR, exist_ok=True)
+-
+-    image, app_name = test_screenshot()
+-    if image is None:
+-        sys.exit(1)
+-
+-    ocr_text = test_ocr(image)
+-    test_llm_summary(app_name, ocr_text)
+-
+-    print()
+-    print("=" * 50)
+-    print("全链路测试完成！")
+-    print("=" * 50)
+diff --git a/tests/test_app_main.py b/tests/test_app_main.py
+index 119e30f..ee3962c 100644
+--- a/tests/test_app_main.py
++++ b/tests/test_app_main.py
+@@ -1,36 +1,43 @@
+-"""Tests for app entry point with Claude Code bridge."""
++# tests/test_app_main.py
++import sys
++import pytest
+ from unittest.mock import patch, MagicMock
+ 
+ 
+-@patch("app.main.QApplication")
+-@patch("app.main.ScreenMonitor")
+-@patch("app.main.MainWindow")
+-@patch("app.main.SummaryGenerator")
+-@patch("app.main.ClaudeClient")
+-def test_app_startup(mock_claude, mock_summary_gen, mock_window, mock_monitor, mock_qapp):
+-    mock_monitor_instance = MagicMock()
+-    mock_monitor.return_value = mock_monitor_instance
++def test_pet_app_construction():
++    with patch("app.main.load_config") as mock_load:
++        mock_load.return_value = {
++            "monitor": {"enabled": True, "interval_seconds": 15, "idle_timeout_seconds": 120, "engage_threshold": 5},
++            "screenshots": {"quality": 75, "cleanup_similarity": 0.9, "retention_days": 7},
++            "ocr": {"engine": "paddleocr", "lang": "ch", "retention_days": 7},
++            "llm": {"local": {"provider": "ollama", "model": "qwen3:8b", "base_url": "http://localhost:11434"}},
++            "logs": {"retention_days": 30},
++            "memory": {"base_dir": "~/.pet-memory", "embedding_model": "bge-small-zh"},
++            "ui": {"window_width": 420, "window_height": 520},
++        }
++        with patch("app.main.ScreenMonitor"):
++            with patch("app.main.SummaryGenerator"):
++                from app.main import PetApp
++                app = PetApp.__new__(PetApp)
++                assert app is not None
+ 
+-    mock_window_instance = MagicMock()
+-    mock_window.return_value = mock_window_instance
+ 
+-    from app.main import PetApp
+-    app = PetApp.__new__(PetApp)
+-    app._config = {
+-        "monitor": {"enabled": True, "interval_seconds": 30, "idle_timeout_seconds": 120,
+-                     "engage_threshold": 5},
+-        "screenshots": {"quality": 75, "cleanup_similarity": 0.9, "retention_days": 7},
+-        "memory": {"base_dir": "~/.pet-memory"},
+-        "llm": {"local": {"base_url": "http://localhost:11434", "model": "qwen3:8b"}},
+-        "ui": {"window_width": 400, "window_height": 600},
+-    }
+-    app._client = MagicMock()
+-    app._monitor = mock_monitor_instance
+-    app._summary_gen = MagicMock()
+-    app._window = mock_window_instance
+-    app._chat_worker = None
++def test_chat_worker_emits_stream_events():
++    from app.main import ChatWorker
++    from app.stream_parser import StreamEvent
+ 
+-    app._start_services()
++    mock_client = MagicMock()
++    events = [
++        StreamEvent("text", "hello", {}),
++        StreamEvent("done", "", {"session_id": "s1"}),
++    ]
++    mock_client.send_message_stream.return_value = iter(events)
+ 
+-    mock_monitor_instance.start.assert_called_once()
+-    mock_window_instance.status_bar.set_monitor_status.assert_called_with(True)
++    worker = ChatWorker(mock_client, "hi")
++    received = []
++    worker.stream_event.connect(lambda d: received.append(d))
++    worker.run()
++
++    assert len(received) == 2
++    assert received[0]["event_type"] == "text"
++    assert received[1]["event_type"] == "done"
+diff --git a/tests/test_claude_client.py b/tests/test_claude_client.py
+index c77e8f1..647bfb4 100644
+--- a/tests/test_claude_client.py
++++ b/tests/test_claude_client.py
+@@ -1,10 +1,12 @@
++import json
++import pytest
+ from unittest.mock import patch, MagicMock
+ from app.claude_client import ClaudeClient
+ 
+ 
+ @patch("app.claude_client.subprocess.run")
+ def test_send_message_logs_chat(mock_run, tmp_path):
+     mock_run.return_value = MagicMock(
+         stdout='{"result":"ok","session_id":"s1","is_error":false,"modelUsage":{"Qwen":{}}}',
+         returncode=0,
+     )
+@@ -20,10 +22,58 @@ def test_send_message_logs_chat(mock_run, tmp_path):
+ 
+ @patch("app.claude_client.subprocess.run")
+ def test_send_message_without_logger(mock_run):
+     mock_run.return_value = MagicMock(
+         stdout='{"result":"ok","session_id":"s1","is_error":false}',
+         returncode=0,
+     )
+     client = ClaudeClient()
+     result = client.send_message("hello")
+     assert result == "ok"
++
++
++@pytest.fixture
++def client():
++    return ClaudeClient()
++
++
++def test_send_message_stream_yields_events(client):
++    lines = [
++        json.dumps({"type": "system", "subtype": "init", "model": "claude-sonnet-4-20250514", "tools": []}),
++        json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "hello"}]}}),
++        json.dumps({"type": "result", "result": "hello", "session_id": "sess-1", "duration_ms": 100}),
++    ]
++
++    mock_proc = MagicMock()
++    mock_proc.stdout = iter(line + "\n" for line in lines)
++    mock_proc.wait.return_value = 0
++    mock_proc.returncode = 0
++
++    with patch("subprocess.Popen", return_value=mock_proc):
++        events = list(client.send_message_stream("hi"))
++
++    assert len(events) == 3
++    assert events[0].event_type == "status"
++    assert events[1].event_type == "text"
++    assert events[1].content == "hello"
++    assert events[2].event_type == "done"
++    assert client._session_id == "sess-1"
++
++
++def test_send_message_stream_handles_popen_error(client):
++    with patch("subprocess.Popen", side_effect=FileNotFoundError("claude not found")):
++        events = list(client.send_message_stream("hi"))
++    assert len(events) == 0
++
++
++def test_send_message_stream_resumes_session(client):
++    client._session_id = "existing-sess"
++    mock_proc = MagicMock()
++    mock_proc.stdout = iter([])
++    mock_proc.wait.return_value = 0
++    mock_proc.returncode = 0
++
++    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
++        list(client.send_message_stream("hi"))
++    call_args = mock_popen.call_args[0][0]
++    assert "--resume" in call_args
++    assert "existing-sess" in call_args
+diff --git a/tests/test_preflight.py b/tests/test_preflight.py
+new file mode 100644
+index 0000000..6938a8d
+--- /dev/null
++++ b/tests/test_preflight.py
+@@ -0,0 +1,49 @@
++# tests/test_preflight.py
++import sys
++import pytest
++from unittest.mock import patch, MagicMock
++from app.preflight import check_python, check_ollama, check_claude_code
++
++
++def test_check_python_passes():
++    assert check_python() is True
++
++
++def test_check_ollama_running():
++    mock_response = MagicMock()
++    mock_response.status_code = 200
++    mock_response.json.return_value = {
++        "models": [
++            {"name": "qwen3:8b"},
++            {"name": "llama3:8b"},
++        ]
++    }
++    with patch("requests.get", return_value=mock_response):
++        ok, models = check_ollama()
++    assert ok is True
++    assert "qwen3:8b" in models
++    assert "llama3:8b" in models
++
++
++def test_check_ollama_not_running():
++    with patch("requests.get", side_effect=ConnectionError("refused")):
++        ok, models = check_ollama()
++    assert ok is False
++    assert models == []
++
++
++def test_check_claude_code_available():
++    mock_result = MagicMock()
++    mock_result.returncode = 0
++    mock_result.stdout = "1.0.28\n"
++    with patch("subprocess.run", return_value=mock_result):
++        ok, version = check_claude_code()
++    assert ok is True
++    assert "1.0.28" in version
++
++
++def test_check_claude_code_not_found():
++    with patch("subprocess.run", side_effect=FileNotFoundError()):
++        ok, version = check_claude_code()
++    assert ok is False
++    assert version == ""
+diff --git a/tests/test_stream_parser.py b/tests/test_stream_parser.py
+new file mode 100644
+index 0000000..05a8d55
+--- /dev/null
++++ b/tests/test_stream_parser.py
+@@ -0,0 +1,92 @@
++# tests/test_stream_parser.py
++import json
++import pytest
++from app.stream_parser import StreamEvent, parse_stream_event
++
++
++def test_parse_init_event():
++    line = json.dumps({"type": "system", "subtype": "init", "model": "claude-sonnet-4-20250514", "tools": []})
++    event = parse_stream_event(line)
++    assert event is not None
++    assert event.event_type == "status"
++    assert "claude-sonnet" in event.content
++    assert event.metadata["model"] == "claude-sonnet-4-20250514"
++
++
++def test_parse_thinking_event():
++    line = json.dumps({
++        "type": "assistant",
++        "message": {"content": [{"type": "thinking", "thinking": "Let me check the activity..."}]},
++    })
++    event = parse_stream_event(line)
++    assert event is not None
++    assert event.event_type == "thinking"
++    assert event.content == "Let me check the activity..."
++
++
++def test_parse_text_event():
++    line = json.dumps({
++        "type": "assistant",
++        "message": {"content": [{"type": "text", "text": "你今天做了三件事"}]},
++    })
++    event = parse_stream_event(line)
++    assert event is not None
++    assert event.event_type == "text"
++    assert event.content == "你今天做了三件事"
++
++
++def test_parse_tool_use_event():
++    line = json.dumps({
++        "type": "assistant",
++        "message": {"content": [{"type": "tool_use", "name": "read_activity_index", "input": {"date": "today"}}]},
++    })
++    event = parse_stream_event(line)
++    assert event is not None
++    assert event.event_type == "tool_use"
++    assert event.content == "read_activity_index"
++    assert event.metadata["input"] == {"date": "today"}
++
++
++def test_parse_tool_result_event():
++    line = json.dumps({
++        "type": "assistant",
++        "message": {"content": [{"type": "tool_result", "content": "3 activities found"}]},
++    })
++    event = parse_stream_event(line)
++    assert event is not None
++    assert event.event_type == "tool_result"
++    assert "3 activities" in event.content
++
++
++def test_parse_result_event():
++    line = json.dumps({
++        "type": "result",
++        "result": "Done",
++        "session_id": "abc-123",
++        "duration_ms": 4500,
++    })
++    event = parse_stream_event(line)
++    assert event is not None
++    assert event.event_type == "done"
++    assert event.metadata["session_id"] == "abc-123"
++
++
++def test_parse_empty_line():
++    assert parse_stream_event("") is None
++    assert parse_stream_event("   ") is None
++
++
++def test_parse_invalid_json():
++    assert parse_stream_event("not json") is None
++
++
++def test_parse_unknown_type():
++    line = json.dumps({"type": "unknown_thing"})
++    event = parse_stream_event(line)
++    assert event is None
++
++
++def test_stream_event_to_dict():
++    event = StreamEvent(event_type="text", content="hello", metadata={"key": "val"})
++    d = event.to_dict()
++    assert d == {"event_type": "text", "content": "hello", "metadata": {"key": "val"}}
+diff --git a/tests/test_ui.py b/tests/test_ui.py
+index fe8261f..365de62 100644
+--- a/tests/test_ui.py
++++ b/tests/test_ui.py
+@@ -1,10 +1,11 @@
++# tests/test_ui.py — full rewrite
+ import sys
+ import pytest
+ from unittest.mock import MagicMock, patch
+ 
+ 
+ @pytest.fixture
+ def qapp():
+     from PyQt6.QtWidgets import QApplication
+     app = QApplication.instance()
+     if app is None:
+@@ -13,22 +14,69 @@ def qapp():
+ 
+ 
+ def test_chat_widget_creation(qapp):
+     from ui.chat_widget import ChatWidget
+     widget = ChatWidget()
+     assert widget is not None
+     widget.append_message("user", "Hello")
+     widget.append_message("assistant", "Hi there")
+ 
+ 
+-def test_status_bar_creation(qapp):
+-    from ui.status_bar import StatusBar
+-    bar = StatusBar()
+-    bar.set_hermes_status(True)
+-    bar.set_monitor_status(True)
+-    bar.set_hermes_status(False)
++def test_chat_widget_stream_events(qapp):
++    from ui.chat_widget import ChatWidget
++    widget = ChatWidget()
++    widget.handle_stream_event({"event_type": "status", "content": "已连接 claude-sonnet", "metadata": {}})
++    widget.handle_stream_event({"event_type": "thinking", "content": "Let me check...", "metadata": {}})
++    widget.handle_stream_event({"event_type": "tool_use", "content": "read_activity_index", "metadata": {"input": {"date": "today"}}})
++    widget.handle_stream_event({"event_type": "tool_result", "content": "3 activities", "metadata": {}})
++    widget.handle_stream_event({"event_type": "text", "content": "你今天做了三件事", "metadata": {}})
++    widget.handle_stream_event({"event_type": "done", "content": "", "metadata": {}})
++
++
++def test_chat_widget_clear(qapp):
++    from ui.chat_widget import ChatWidget
++    widget = ChatWidget()
++    widget.append_message("user", "Hello")
++    widget.clear_chat()
++    assert widget._chat_display.toPlainText() == ""
++
++
++def test_overview_widget_creation(qapp):
++    from ui.overview_widget import OverviewWidget
++    widget = OverviewWidget()
++    assert widget is not None
++
++
++def test_activity_log_widget_creation(qapp):
++    from ui.activity_log_widget import ActivityLogWidget
++    widget = ActivityLogWidget()
++    assert widget is not None
++
++
++def test_settings_widget_creation(qapp):
++    from ui.settings_widget import SettingsWidget
++    config = {
++        "monitor": {"interval_seconds": 15, "engage_threshold": 5},
++        "screenshots": {"retention_days": 7},
++        "ocr": {"retention_days": 7},
++        "logs": {"retention_days": 30},
++        "llm": {"local": {"model": "qwen3:8b", "base_url": "http://localhost:11434"}},
++    }
++    widget = SettingsWidget(config=config, config_path="/tmp/test_config.yaml", on_config_changed=lambda c: None)
++    assert widget is not None
+ 
+ 
+-def test_main_window_creation(qapp):
+-    from ui.main_window import MainWindow
+-    window = MainWindow.__new__(MainWindow)
+-    assert window is not None
++def test_tray_app_creation(qapp):
++    from ui.tray_app import TrayApp
++    config = {
++        "ui": {"window_width": 420, "window_height": 520},
++        "monitor": {"interval_seconds": 15, "engage_threshold": 5},
++        "screenshots": {"retention_days": 7},
++        "ocr": {"retention_days": 7},
++        "logs": {"retention_days": 30},
++        "llm": {"local": {"model": "qwen3:8b", "base_url": "http://localhost:11434"}},
++    }
++    tray = TrayApp(config=config, config_path="/tmp/test.yaml", on_message_sent=lambda t: None)
++    assert tray.tray_icon is not None
++    assert tray.panel is not None
++    tray.update_monitor_status(True)
++    tray.update_agent_status(True)
+diff --git a/ui/activity_log_widget.py b/ui/activity_log_widget.py
+new file mode 100644
+index 0000000..d448b05
+--- /dev/null
++++ b/ui/activity_log_widget.py
+@@ -0,0 +1,94 @@
++# ui/activity_log_widget.py
++from __future__ import annotations
++
++import re
++from pathlib import Path
++from datetime import datetime
++
++from PyQt6.QtWidgets import (
++    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
++    QTextEdit, QPushButton, QDateEdit,
++)
++from PyQt6.QtCore import Qt, QDate
++
++
++class ActivityLogWidget(QWidget):
++    def __init__(self, parent=None):
++        super().__init__(parent)
++        self._base_dir = ""
++        self._setup_ui()
++
++    def _setup_ui(self):
++        layout = QVBoxLayout(self)
++        layout.setContentsMargins(8, 8, 8, 8)
++
++        header = QHBoxLayout()
++        header.addWidget(QLabel("📋 活动日志"))
++        header.addStretch()
++        self._date_edit = QDateEdit()
++        self._date_edit.setDate(QDate.currentDate())
++        self._date_edit.setCalendarPopup(True)
++        self._date_edit.dateChanged.connect(self._on_date_changed)
++        header.addWidget(self._date_edit)
++        layout.addLayout(header)
++
++        self._list = QListWidget()
++        self._list.setStyleSheet("QListWidget { font-size: 13px; }")
++        self._list.currentItemChanged.connect(self._on_item_selected)
++        layout.addWidget(self._list, stretch=1)
++
++        self._detail = QTextEdit()
++        self._detail.setReadOnly(True)
++        self._detail.setMaximumHeight(150)
++        self._detail.setStyleSheet(
++            "QTextEdit { background-color: #fafafa; border: 1px solid #eee; "
++            "border-radius: 6px; padding: 6px; font-size: 13px; }"
++        )
++        layout.addWidget(self._detail)
++
++        self._count_label = QLabel("共 0 条活动")
++        self._count_label.setStyleSheet("QLabel { color: #888; font-size: 12px; }")
++        layout.addWidget(self._count_label)
++
++    def set_base_dir(self, base_dir: str):
++        self._base_dir = base_dir
++
++    def _on_date_changed(self, date: QDate):
++        self.load_date(
++            index_dir=str(Path(self._base_dir) / "index"),
++            activities_dir=str(Path(self._base_dir) / "activities"),
++            date=date.toString("yyyy-MM-dd"),
++        )
++
++    def load_date(self, index_dir: str, activities_dir: str, date: str):
++        self._list.clear()
++        self._detail.clear()
++
++        index_path = Path(index_dir) / f"{date}.md"
++        if not index_path.exists():
++            self._count_label.setText("该日期无活动记录")
++            return
++
++        content = index_path.read_text(encoding="utf-8")
++        entries = [l.strip() for l in content.split("\n") if l.strip().startswith("- ")]
++
++        for entry in entries:
++            item = QListWidgetItem(entry[2:])
++            match = re.search(r"→\s*(.+)$", entry)
++            if match:
++                item.setData(Qt.ItemDataRole.UserRole, str(Path(activities_dir).parent / match.group(1).strip()))
++            self._list.addItem(item)
++
++        self._count_label.setText(f"共 {len(entries)} 条活动")
++
++    def _on_item_selected(self, current: QListWidgetItem | None, _previous):
++        if current is None:
++            self._detail.clear()
++            return
++        file_path = current.data(Qt.ItemDataRole.UserRole)
++        if file_path and Path(file_path).exists():
++            text = Path(file_path).read_text(encoding="utf-8")
++            ocr_stripped = re.sub(r"\n*### OCR原文片段\n+```\n.*?```\n?", "", text, flags=re.DOTALL)
++            self._detail.setPlainText(ocr_stripped.strip())
++        else:
++            self._detail.setPlainText("无法加载活动详情")
+diff --git a/ui/chat_widget.py b/ui/chat_widget.py
+index 5593808..6a91d8e 100644
+--- a/ui/chat_widget.py
++++ b/ui/chat_widget.py
+@@ -1,37 +1,52 @@
++# ui/chat_widget.py
+ from __future__ import annotations
+ 
+ from PyQt6.QtWidgets import (
+-    QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLineEdit, QPushButton,
++    QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLineEdit, QPushButton, QLabel,
+ )
+ from PyQt6.QtCore import pyqtSignal, Qt
+ 
+ 
+ class ChatWidget(QWidget):
+     message_sent = pyqtSignal(str)
+ 
+     def __init__(self, parent=None):
+         super().__init__(parent)
+         self._setup_ui()
++        self._current_thinking = False
+ 
+     def _setup_ui(self):
+         layout = QVBoxLayout(self)
+         layout.setContentsMargins(8, 8, 8, 8)
+ 
++        header = QHBoxLayout()
++        header.addWidget(QLabel("💬 聊天"))
++        header.addStretch()
++        self._clear_btn = QPushButton("清空对话")
++        self._clear_btn.setStyleSheet("QPushButton { font-size: 12px; padding: 2px 8px; }")
++        self._clear_btn.clicked.connect(self.clear_chat)
++        header.addWidget(self._clear_btn)
++        layout.addLayout(header)
++
+         self._chat_display = QTextEdit()
+         self._chat_display.setReadOnly(True)
+         self._chat_display.setStyleSheet(
+             "QTextEdit { background-color: #f5f5f5; border: 1px solid #ddd; "
+             "border-radius: 8px; padding: 8px; font-size: 14px; }"
+         )
+         layout.addWidget(self._chat_display, stretch=1)
+ 
++        self._status_label = QLabel("")
++        self._status_label.setStyleSheet("QLabel { color: #888; font-size: 12px; }")
++        layout.addWidget(self._status_label)
++
+         input_layout = QHBoxLayout()
+         self._input_field = QLineEdit()
+         self._input_field.setPlaceholderText("输入消息...")
+         self._input_field.setStyleSheet(
+             "QLineEdit { border: 1px solid #ccc; border-radius: 6px; "
+             "padding: 8px; font-size: 14px; }"
+         )
+         self._input_field.returnPressed.connect(self._on_send)
+         input_layout.addWidget(self._input_field, stretch=1)
+ 
+@@ -51,23 +66,89 @@ class ChatWidget(QWidget):
+         if text:
+             self.append_message("user", text)
+             self._input_field.clear()
+             self.message_sent.emit(text)
+ 
+     def append_message(self, role: str, content: str):
+         if role == "user":
+             self._chat_display.append(
+                 f'<div style="text-align:right; margin:4px 0;">'
+                 f'<span style="background-color:#DCF8C6; padding:6px 10px; '
+-                f'border-radius:8px; display:inline-block;">{content}</span></div>'
++                f'border-radius:8px;">{content}</span></div>'
++            )
++        elif role == "system":
++            self._chat_display.append(
++                f'<div style="text-align:center; margin:4px 0;">'
++                f'<span style="color:#888; font-size:12px;">{content}</span></div>'
+             )
+         else:
+             self._chat_display.append(
+                 f'<div style="text-align:left; margin:4px 0;">'
+                 f'<span style="background-color:#FFFFFF; padding:6px 10px; '
+-                f'border-radius:8px; border:1px solid #eee; display:inline-block;">'
+-                f'{content}</span></div>'
++                f'border-radius:8px; border:1px solid #eee;">{content}</span></div>'
++            )
++
++    def handle_stream_event(self, event: dict):
++        etype = event.get("event_type", "")
++        content = event.get("content", "")
++        metadata = event.get("metadata", {})
++
++        if etype == "status":
++            self._status_label.setText(content)
++
++        elif etype == "thinking":
++            if not self._current_thinking:
++                self._chat_display.append(
++                    '<div style="margin:4px 0; padding:6px; background-color:#f0f0f0; '
++                    'border-radius:6px; color:#666; font-size:12px;">'
++                    '🧠 思考中...<br>'
++                )
++                self._current_thinking = True
++            cursor = self._chat_display.textCursor()
++            cursor.movePosition(cursor.MoveOperation.End)
++            cursor.insertText(content)
++
++        elif etype == "tool_use":
++            if self._current_thinking:
++                self._chat_display.append("</div>")
++                self._current_thinking = False
++            input_str = ""
++            inp = metadata.get("input", {})
++            if inp:
++                params = ", ".join(f'{k}="{v}"' for k, v in inp.items())
++                input_str = f"<br>  参数: {params}"
++            self._chat_display.append(
++                f'<div style="margin:2px 0; color:#2196F3; font-size:12px;">'
++                f'🔧 调用: {content}{input_str}</div>'
++            )
++            self._status_label.setText(f"调用工具: {content}...")
++
++        elif etype == "tool_result":
++            display = content[:100] + "..." if len(content) > 100 else content
++            self._chat_display.append(
++                f'<div style="margin:2px 0; color:#4CAF50; font-size:12px;">'
++                f'✓ {display}</div>'
+             )
+ 
++        elif etype == "text":
++            if self._current_thinking:
++                self._chat_display.append("</div>")
++                self._current_thinking = False
++            cursor = self._chat_display.textCursor()
++            cursor.movePosition(cursor.MoveOperation.End)
++            cursor.insertText(content)
++            self._status_label.setText("生成回复...")
++
++        elif etype == "done":
++            if self._current_thinking:
++                self._chat_display.append("</div>")
++                self._current_thinking = False
++            self._status_label.setText("")
++
++    def clear_chat(self):
++        self._chat_display.clear()
++        self._status_label.setText("")
++        self._current_thinking = False
++
+     def set_input_enabled(self, enabled: bool):
+         self._input_field.setEnabled(enabled)
+         self._send_button.setEnabled(enabled)
+diff --git a/ui/main_window.py b/ui/main_window.py
+deleted file mode 100644
+index fbc6c39..0000000
+--- a/ui/main_window.py
++++ /dev/null
+@@ -1,37 +0,0 @@
+-from __future__ import annotations
+-
+-from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
+-from PyQt6.QtCore import Qt
+-
+-from ui.chat_widget import ChatWidget
+-from ui.status_bar import StatusBar
+-
+-
+-class MainWindow(QMainWindow):
+-    def __init__(
+-        self,
+-        on_message_sent=None,
+-        width: int = 400,
+-        height: int = 600,
+-    ):
+-        super().__init__()
+-        self.setWindowTitle("逗叽脑袋 - 桌面宠物 Agent")
+-        self.setFixedSize(width, height)
+-        self.setWindowFlags(
+-            Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
+-        )
+-
+-        central = QWidget()
+-        self.setCentralWidget(central)
+-        layout = QVBoxLayout(central)
+-        layout.setContentsMargins(0, 0, 0, 0)
+-        layout.setSpacing(0)
+-
+-        self.chat_widget = ChatWidget()
+-        layout.addWidget(self.chat_widget, stretch=1)
+-
+-        self.status_bar = StatusBar()
+-        layout.addWidget(self.status_bar)
+-
+-        if on_message_sent:
+-            self.chat_widget.message_sent.connect(on_message_sent)
+diff --git a/ui/overview_widget.py b/ui/overview_widget.py
+new file mode 100644
+index 0000000..14a0b7e
+--- /dev/null
++++ b/ui/overview_widget.py
+@@ -0,0 +1,58 @@
++# ui/overview_widget.py
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from datetime import datetime
++
++from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea
++from PyQt6.QtCore import Qt
++
++
++class OverviewWidget(QWidget):
++    def __init__(self, parent=None):
++        super().__init__(parent)
++        layout = QVBoxLayout(self)
++        layout.setContentsMargins(12, 12, 12, 12)
++
++        header = QLabel("📊 今日概览")
++        header.setStyleSheet("font-size: 16px; font-weight: bold;")
++        layout.addWidget(header)
++
++        scroll = QScrollArea()
++        scroll.setWidgetResizable(True)
++        scroll.setStyleSheet("QScrollArea { border: none; }")
++        self._content = QLabel("加载中...")
++        self._content.setWordWrap(True)
++        self._content.setAlignment(Qt.AlignmentFlag.AlignTop)
++        self._content.setStyleSheet("QLabel { font-size: 14px; padding: 8px; }")
++        scroll.setWidget(self._content)
++        layout.addWidget(scroll, stretch=1)
++
++    def refresh(self, stats_dir: str, index_dir: str):
++        today = datetime.now().strftime("%Y-%m-%d")
++        lines = []
++
++        stats_path = Path(stats_dir) / f"{today}.json"
++        if stats_path.exists():
++            data = json.loads(stats_path.read_text(encoding="utf-8"))
++            m = data.get("monitor", {})
++            c = data.get("chat", {})
++            lines.append(f"截图次数    {m.get('screenshots_total', 0)}")
++            lines.append(f"深度活动    {m.get('engaged_sessions', 0)} 次")
++            avg_dur = m.get("engaged_avg_duration_sec", 0)
++            total_min = round(m.get("engaged_sessions", 0) * avg_dur / 60, 1)
++            lines.append(f"总活动时长  {total_min} 分钟")
++            lines.append(f"浏览次数    {m.get('browsing_sessions', 0)} 次")
++            lines.append(f"摘要生成    {m.get('summaries_generated', 0)} 次")
++            lines.append(f"对话消息    {c.get('messages_total', 0)} 条")
++        else:
++            lines.append("暂无统计数据")
++
++        index_path = Path(index_dir) / f"{today}.md"
++        if index_path.exists():
++            content = index_path.read_text(encoding="utf-8")
++            activity_count = len([l for l in content.split("\n") if l.strip().startswith("- ")])
++            lines.insert(1, f"识别活动    {activity_count} 条")
++
++        self._content.setText("\n".join(lines))
+diff --git a/ui/settings_widget.py b/ui/settings_widget.py
+new file mode 100644
+index 0000000..bdd6247
+--- /dev/null
++++ b/ui/settings_widget.py
+@@ -0,0 +1,128 @@
++# ui/settings_widget.py
++from __future__ import annotations
++
++import os
++from pathlib import Path
++
++import requests
++import yaml
++from PyQt6.QtWidgets import (
++    QWidget, QVBoxLayout, QFormLayout, QLabel, QComboBox,
++    QSlider, QSpinBox, QPushButton, QCheckBox, QHBoxLayout,
++)
++from PyQt6.QtCore import Qt
++
++
++class SettingsWidget(QWidget):
++    def __init__(self, config: dict, config_path: str, on_config_changed: callable, parent=None):
++        super().__init__(parent)
++        self._config = config
++        self._config_path = config_path
++        self._on_config_changed = on_config_changed
++        self._setup_ui()
++
++    def _setup_ui(self):
++        layout = QVBoxLayout(self)
++        layout.setContentsMargins(12, 12, 12, 12)
++
++        header = QLabel("⚙️ 设置")
++        header.setStyleSheet("font-size: 16px; font-weight: bold;")
++        layout.addWidget(header)
++
++        form = QFormLayout()
++        form.setSpacing(12)
++
++        self._model_combo = QComboBox()
++        self._refresh_models()
++        refresh_btn = QPushButton("刷新")
++        refresh_btn.setFixedWidth(50)
++        refresh_btn.clicked.connect(self._refresh_models)
++        model_row = QHBoxLayout()
++        model_row.addWidget(self._model_combo, stretch=1)
++        model_row.addWidget(refresh_btn)
++        form.addRow("Ollama 模型", model_row)
++
++        self._interval_slider = QSlider(Qt.Orientation.Horizontal)
++        self._interval_slider.setRange(10, 60)
++        self._interval_slider.setValue(self._config["monitor"]["interval_seconds"])
++        self._interval_label = QLabel(f"{self._interval_slider.value()}s")
++        self._interval_slider.valueChanged.connect(lambda v: self._interval_label.setText(f"{v}s"))
++        interval_row = QHBoxLayout()
++        interval_row.addWidget(self._interval_slider, stretch=1)
++        interval_row.addWidget(self._interval_label)
++        form.addRow("截图间隔", interval_row)
++
++        self._threshold_slider = QSlider(Qt.Orientation.Horizontal)
++        self._threshold_slider.setRange(3, 10)
++        self._threshold_slider.setValue(self._config["monitor"]["engage_threshold"])
++        self._threshold_label = QLabel(f"{self._threshold_slider.value()} 次")
++        self._threshold_slider.valueChanged.connect(lambda v: self._threshold_label.setText(f"{v} 次"))
++        threshold_row = QHBoxLayout()
++        threshold_row.addWidget(self._threshold_slider, stretch=1)
++        threshold_row.addWidget(self._threshold_label)
++        form.addRow("深度活动阈值", threshold_row)
++
++        self._screenshot_days = QSpinBox()
++        self._screenshot_days.setRange(1, 90)
++        self._screenshot_days.setValue(self._config["screenshots"]["retention_days"])
++        form.addRow("截图保留天数", self._screenshot_days)
++
++        self._ocr_days = QSpinBox()
++        self._ocr_days.setRange(1, 90)
++        self._ocr_days.setValue(self._config.get("ocr", {}).get("retention_days", 7))
++        form.addRow("OCR 保留天数", self._ocr_days)
++
++        self._log_days = QSpinBox()
++        self._log_days.setRange(1, 365)
++        self._log_days.setValue(self._config.get("logs", {}).get("retention_days", 30))
++        form.addRow("日志保留天数", self._log_days)
++
++        layout.addLayout(form)
++        layout.addStretch()
++
++        save_btn = QPushButton("保存设置")
++        save_btn.setStyleSheet(
++            "QPushButton { background-color: #4CAF50; color: white; "
++            "border: none; border-radius: 6px; padding: 10px; font-size: 14px; }"
++        )
++        save_btn.clicked.connect(self._save)
++        layout.addWidget(save_btn)
++
++    def _refresh_models(self):
++        self._model_combo.clear()
++        base_url = self._config["llm"]["local"]["base_url"]
++        try:
++            resp = requests.get(f"{base_url}/api/tags", timeout=3)
++            if resp.status_code == 200:
++                models = [m["name"] for m in resp.json().get("models", [])]
++                self._model_combo.addItems(models)
++                current = self._config["llm"]["local"]["model"]
++                idx = self._model_combo.findText(current)
++                if idx >= 0:
++                    self._model_combo.setCurrentIndex(idx)
++        except Exception:
++            self._model_combo.addItem(self._config["llm"]["local"]["model"])
++
++    def _save(self):
++        if not os.path.exists(self._config_path):
++            config_data = {}
++        else:
++            with open(self._config_path, "r", encoding="utf-8") as f:
++                config_data = yaml.safe_load(f) or {}
++
++        config_data.setdefault("monitor", {})["interval_seconds"] = self._interval_slider.value()
++        config_data["monitor"]["engage_threshold"] = self._threshold_slider.value()
++        config_data.setdefault("screenshots", {})["retention_days"] = self._screenshot_days.value()
++        config_data.setdefault("ocr", {})["retention_days"] = self._ocr_days.value()
++        config_data.setdefault("logs", {})["retention_days"] = self._log_days.value()
++        model = self._model_combo.currentText()
++        if model:
++            config_data.setdefault("llm", {}).setdefault("local", {})["model"] = model
++
++        with open(self._config_path, "w", encoding="utf-8") as f:
++            yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False)
++
++        from app.config import load_config
++        new_config = load_config(self._config_path)
++        self._config = new_config
++        self._on_config_changed(new_config)
+diff --git a/ui/status_bar.py b/ui/status_bar.py
+deleted file mode 100644
+index 0379648..0000000
+--- a/ui/status_bar.py
++++ /dev/null
+@@ -1,37 +0,0 @@
+-from __future__ import annotations
+-
+-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel
+-from PyQt6.QtCore import Qt
+-
+-
+-class StatusBar(QWidget):
+-    def __init__(self, parent=None):
+-        super().__init__(parent)
+-        layout = QHBoxLayout(self)
+-        layout.setContentsMargins(8, 2, 8, 2)
+-
+-        self._hermes_label = QLabel()
+-        self._monitor_label = QLabel()
+-
+-        layout.addWidget(self._monitor_label)
+-        layout.addStretch()
+-        layout.addWidget(self._hermes_label)
+-
+-        self.set_hermes_status(False)
+-        self.set_monitor_status(False)
+-
+-    def set_hermes_status(self, connected: bool):
+-        if connected:
+-            self._hermes_label.setText("Agent: 已连接")
+-            self._hermes_label.setStyleSheet("color: green; font-size: 12px;")
+-        else:
+-            self._hermes_label.setText("Agent: 未连接")
+-            self._hermes_label.setStyleSheet("color: red; font-size: 12px;")
+-
+-    def set_monitor_status(self, running: bool):
+-        if running:
+-            self._monitor_label.setText("监控: 运行中")
+-            self._monitor_label.setStyleSheet("color: green; font-size: 12px;")
+-        else:
+-            self._monitor_label.setText("监控: 已停止")
+-            self._monitor_label.setStyleSheet("color: gray; font-size: 12px;")
+diff --git a/ui/tray_app.py b/ui/tray_app.py
+new file mode 100644
+index 0000000..e51fe9f
+--- /dev/null
++++ b/ui/tray_app.py
+@@ -0,0 +1,137 @@
++# ui/tray_app.py
++from __future__ import annotations
++
++from PyQt6.QtWidgets import (
++    QSystemTrayIcon, QMenu, QWidget, QVBoxLayout, QTabWidget, QApplication,
++)
++from PyQt6.QtGui import QIcon, QAction, QPixmap, QPainter, QFont, QColor
++from PyQt6.QtCore import Qt, QPoint
++
++from ui.chat_widget import ChatWidget
++from ui.overview_widget import OverviewWidget
++from ui.activity_log_widget import ActivityLogWidget
++from ui.settings_widget import SettingsWidget
++
++
++def _create_text_icon(text: str = "🧠") -> QIcon:
++    pixmap = QPixmap(32, 32)
++    pixmap.fill(QColor(0, 0, 0, 0))
++    painter = QPainter(pixmap)
++    painter.setFont(QFont("Arial", 20))
++    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, text)
++    painter.end()
++    return QIcon(pixmap)
++
++
++class TrayApp:
++    def __init__(self, config: dict, config_path: str, on_message_sent: callable):
++        self._config = config
++        self._config_path = config_path
++        self._on_message_sent = on_message_sent
++        self._monitor_running = False
++        self._agent_connected = False
++
++        self.tray_icon = QSystemTrayIcon(_create_text_icon())
++        self.tray_icon.setToolTip("逗叽脑袋 - 桌面宠物 Agent")
++        self.tray_icon.activated.connect(self._on_tray_activated)
++
++        self._build_context_menu()
++        self._build_panel()
++
++        self.tray_icon.show()
++
++    def _build_context_menu(self):
++        menu = QMenu()
++        self._monitor_action = QAction("监控: 已停止")
++        self._monitor_action.setEnabled(False)
++        menu.addAction(self._monitor_action)
++
++        self._agent_action = QAction("Agent: 未连接")
++        self._agent_action.setEnabled(False)
++        menu.addAction(self._agent_action)
++
++        menu.addSeparator()
++
++        open_dir_action = QAction("打开数据目录")
++        open_dir_action.triggered.connect(self._open_data_dir)
++        menu.addAction(open_dir_action)
++
++        quit_action = QAction("退出")
++        quit_action.triggered.connect(QApplication.quit)
++        menu.addAction(quit_action)
++
++        self.tray_icon.setContextMenu(menu)
++
++    def _build_panel(self):
++        self.panel = QWidget()
++        self.panel.setWindowTitle("逗叽脑袋")
++        self.panel.setFixedSize(420, 520)
++        self.panel.setWindowFlags(
++            Qt.WindowType.WindowStaysOnTopHint
++            | Qt.WindowType.FramelessWindowHint
++            | Qt.WindowType.Tool
++        )
++
++        layout = QVBoxLayout(self.panel)
++        layout.setContentsMargins(0, 0, 0, 0)
++
++        tabs = QTabWidget()
++        tabs.setStyleSheet("QTabBar::tab { padding: 6px 12px; font-size: 13px; }")
++
++        self.chat_widget = ChatWidget()
++        self.chat_widget.message_sent.connect(self._on_message_sent)
++        tabs.addTab(self.chat_widget, "💬 聊天")
++
++        self.overview_widget = OverviewWidget()
++        tabs.addTab(self.overview_widget, "📊 概览")
++
++        self.activity_log_widget = ActivityLogWidget()
++        tabs.addTab(self.activity_log_widget, "📋 日志")
++
++        self.settings_widget = SettingsWidget(
++            config=self._config,
++            config_path=self._config_path,
++            on_config_changed=self._on_config_changed,
++        )
++        tabs.addTab(self.settings_widget, "⚙️ 设置")
++
++        layout.addWidget(tabs)
++
++    def _on_tray_activated(self, reason):
++        if reason == QSystemTrayIcon.ActivationReason.Trigger:
++            if self.panel.isVisible():
++                self.hide_panel()
++            else:
++                self.show_panel()
++
++    def show_panel(self):
++        geo = self.tray_icon.geometry()
++        panel_x = geo.x() + geo.width() // 2 - self.panel.width() // 2
++        panel_y = geo.y() + geo.height()
++        self.panel.move(QPoint(panel_x, panel_y))
++        self.panel.show()
++        self.panel.raise_()
++        self.panel.activateWindow()
++
++    def hide_panel(self):
++        self.panel.hide()
++
++    def update_monitor_status(self, running: bool):
++        self._monitor_running = running
++        text = "监控: 运行中 ✓" if running else "监控: 已停止"
++        self._monitor_action.setText(text)
++
++    def update_agent_status(self, connected: bool):
++        self._agent_connected = connected
++        text = "Agent: 已连接 ✓" if connected else "Agent: 未连接"
++        self._agent_action.setText(text)
++
++    def _on_config_changed(self, new_config: dict):
++        self._config = new_config
++
++    def _open_data_dir(self):
++        import subprocess
++        import os
++        data_dir = os.path.expanduser("~/.pet-memory")
++        os.makedirs(data_dir, exist_ok=True)
++        subprocess.Popen(["open", data_dir])

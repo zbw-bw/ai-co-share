@@ -1,0 +1,703 @@
+# Review Package — Task 4: Menu Bar UI Shell
+
+## Commits
+ad9536a feat: add menu bar tray app with 4-tab panel and streaming chat widget
+
+## Stat
+ tests/test_ui.py          |  68 +++++++++++++++++++----
+ ui/activity_log_widget.py |  94 +++++++++++++++++++++++++++++++
+ ui/chat_widget.py         |  89 ++++++++++++++++++++++++++++--
+ ui/overview_widget.py     |  58 ++++++++++++++++++++
+ ui/settings_widget.py     | 128 +++++++++++++++++++++++++++++++++++++++++++
+ ui/tray_app.py            | 137 ++++++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 560 insertions(+), 14 deletions(-)
+
+## Diff
+diff --git a/tests/test_ui.py b/tests/test_ui.py
+index fe8261f..365de62 100644
+--- a/tests/test_ui.py
++++ b/tests/test_ui.py
+@@ -1,10 +1,11 @@
++# tests/test_ui.py — full rewrite
+ import sys
+ import pytest
+ from unittest.mock import MagicMock, patch
+ 
+ 
+ @pytest.fixture
+ def qapp():
+     from PyQt6.QtWidgets import QApplication
+     app = QApplication.instance()
+     if app is None:
+@@ -13,22 +14,69 @@ def qapp():
+ 
+ 
+ def test_chat_widget_creation(qapp):
+     from ui.chat_widget import ChatWidget
+     widget = ChatWidget()
+     assert widget is not None
+     widget.append_message("user", "Hello")
+     widget.append_message("assistant", "Hi there")
+ 
+ 
+-def test_status_bar_creation(qapp):
+-    from ui.status_bar import StatusBar
+-    bar = StatusBar()
+-    bar.set_hermes_status(True)
+-    bar.set_monitor_status(True)
+-    bar.set_hermes_status(False)
++def test_chat_widget_stream_events(qapp):
++    from ui.chat_widget import ChatWidget
++    widget = ChatWidget()
++    widget.handle_stream_event({"event_type": "status", "content": "已连接 claude-sonnet", "metadata": {}})
++    widget.handle_stream_event({"event_type": "thinking", "content": "Let me check...", "metadata": {}})
++    widget.handle_stream_event({"event_type": "tool_use", "content": "read_activity_index", "metadata": {"input": {"date": "today"}}})
++    widget.handle_stream_event({"event_type": "tool_result", "content": "3 activities", "metadata": {}})
++    widget.handle_stream_event({"event_type": "text", "content": "你今天做了三件事", "metadata": {}})
++    widget.handle_stream_event({"event_type": "done", "content": "", "metadata": {}})
++
++
++def test_chat_widget_clear(qapp):
++    from ui.chat_widget import ChatWidget
++    widget = ChatWidget()
++    widget.append_message("user", "Hello")
++    widget.clear_chat()
++    assert widget._chat_display.toPlainText() == ""
++
++
++def test_overview_widget_creation(qapp):
++    from ui.overview_widget import OverviewWidget
++    widget = OverviewWidget()
++    assert widget is not None
++
++
++def test_activity_log_widget_creation(qapp):
++    from ui.activity_log_widget import ActivityLogWidget
++    widget = ActivityLogWidget()
++    assert widget is not None
++
++
++def test_settings_widget_creation(qapp):
++    from ui.settings_widget import SettingsWidget
++    config = {
++        "monitor": {"interval_seconds": 15, "engage_threshold": 5},
++        "screenshots": {"retention_days": 7},
++        "ocr": {"retention_days": 7},
++        "logs": {"retention_days": 30},
++        "llm": {"local": {"model": "qwen3:8b", "base_url": "http://localhost:11434"}},
++    }
++    widget = SettingsWidget(config=config, config_path="/tmp/test_config.yaml", on_config_changed=lambda c: None)
++    assert widget is not None
+ 
+ 
+-def test_main_window_creation(qapp):
+-    from ui.main_window import MainWindow
+-    window = MainWindow.__new__(MainWindow)
+-    assert window is not None
++def test_tray_app_creation(qapp):
++    from ui.tray_app import TrayApp
++    config = {
++        "ui": {"window_width": 420, "window_height": 520},
++        "monitor": {"interval_seconds": 15, "engage_threshold": 5},
++        "screenshots": {"retention_days": 7},
++        "ocr": {"retention_days": 7},
++        "logs": {"retention_days": 30},
++        "llm": {"local": {"model": "qwen3:8b", "base_url": "http://localhost:11434"}},
++    }
++    tray = TrayApp(config=config, config_path="/tmp/test.yaml", on_message_sent=lambda t: None)
++    assert tray.tray_icon is not None
++    assert tray.panel is not None
++    tray.update_monitor_status(True)
++    tray.update_agent_status(True)
+diff --git a/ui/activity_log_widget.py b/ui/activity_log_widget.py
+new file mode 100644
+index 0000000..d448b05
+--- /dev/null
++++ b/ui/activity_log_widget.py
+@@ -0,0 +1,94 @@
++# ui/activity_log_widget.py
++from __future__ import annotations
++
++import re
++from pathlib import Path
++from datetime import datetime
++
++from PyQt6.QtWidgets import (
++    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
++    QTextEdit, QPushButton, QDateEdit,
++)
++from PyQt6.QtCore import Qt, QDate
++
++
++class ActivityLogWidget(QWidget):
++    def __init__(self, parent=None):
++        super().__init__(parent)
++        self._base_dir = ""
++        self._setup_ui()
++
++    def _setup_ui(self):
++        layout = QVBoxLayout(self)
++        layout.setContentsMargins(8, 8, 8, 8)
++
++        header = QHBoxLayout()
++        header.addWidget(QLabel("📋 活动日志"))
++        header.addStretch()
++        self._date_edit = QDateEdit()
++        self._date_edit.setDate(QDate.currentDate())
++        self._date_edit.setCalendarPopup(True)
++        self._date_edit.dateChanged.connect(self._on_date_changed)
++        header.addWidget(self._date_edit)
++        layout.addLayout(header)
++
++        self._list = QListWidget()
++        self._list.setStyleSheet("QListWidget { font-size: 13px; }")
++        self._list.currentItemChanged.connect(self._on_item_selected)
++        layout.addWidget(self._list, stretch=1)
++
++        self._detail = QTextEdit()
++        self._detail.setReadOnly(True)
++        self._detail.setMaximumHeight(150)
++        self._detail.setStyleSheet(
++            "QTextEdit { background-color: #fafafa; border: 1px solid #eee; "
++            "border-radius: 6px; padding: 6px; font-size: 13px; }"
++        )
++        layout.addWidget(self._detail)
++
++        self._count_label = QLabel("共 0 条活动")
++        self._count_label.setStyleSheet("QLabel { color: #888; font-size: 12px; }")
++        layout.addWidget(self._count_label)
++
++    def set_base_dir(self, base_dir: str):
++        self._base_dir = base_dir
++
++    def _on_date_changed(self, date: QDate):
++        self.load_date(
++            index_dir=str(Path(self._base_dir) / "index"),
++            activities_dir=str(Path(self._base_dir) / "activities"),
++            date=date.toString("yyyy-MM-dd"),
++        )
++
++    def load_date(self, index_dir: str, activities_dir: str, date: str):
++        self._list.clear()
++        self._detail.clear()
++
++        index_path = Path(index_dir) / f"{date}.md"
++        if not index_path.exists():
++            self._count_label.setText("该日期无活动记录")
++            return
++
++        content = index_path.read_text(encoding="utf-8")
++        entries = [l.strip() for l in content.split("\n") if l.strip().startswith("- ")]
++
++        for entry in entries:
++            item = QListWidgetItem(entry[2:])
++            match = re.search(r"→\s*(.+)$", entry)
++            if match:
++                item.setData(Qt.ItemDataRole.UserRole, str(Path(activities_dir).parent / match.group(1).strip()))
++            self._list.addItem(item)
++
++        self._count_label.setText(f"共 {len(entries)} 条活动")
++
++    def _on_item_selected(self, current: QListWidgetItem | None, _previous):
++        if current is None:
++            self._detail.clear()
++            return
++        file_path = current.data(Qt.ItemDataRole.UserRole)
++        if file_path and Path(file_path).exists():
++            text = Path(file_path).read_text(encoding="utf-8")
++            ocr_stripped = re.sub(r"\n*### OCR原文片段\n+```\n.*?```\n?", "", text, flags=re.DOTALL)
++            self._detail.setPlainText(ocr_stripped.strip())
++        else:
++            self._detail.setPlainText("无法加载活动详情")
+diff --git a/ui/chat_widget.py b/ui/chat_widget.py
+index 5593808..6a91d8e 100644
+--- a/ui/chat_widget.py
++++ b/ui/chat_widget.py
+@@ -1,37 +1,52 @@
++# ui/chat_widget.py
+ from __future__ import annotations
+ 
+ from PyQt6.QtWidgets import (
+-    QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLineEdit, QPushButton,
++    QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLineEdit, QPushButton, QLabel,
+ )
+ from PyQt6.QtCore import pyqtSignal, Qt
+ 
+ 
+ class ChatWidget(QWidget):
+     message_sent = pyqtSignal(str)
+ 
+     def __init__(self, parent=None):
+         super().__init__(parent)
+         self._setup_ui()
++        self._current_thinking = False
+ 
+     def _setup_ui(self):
+         layout = QVBoxLayout(self)
+         layout.setContentsMargins(8, 8, 8, 8)
+ 
++        header = QHBoxLayout()
++        header.addWidget(QLabel("💬 聊天"))
++        header.addStretch()
++        self._clear_btn = QPushButton("清空对话")
++        self._clear_btn.setStyleSheet("QPushButton { font-size: 12px; padding: 2px 8px; }")
++        self._clear_btn.clicked.connect(self.clear_chat)
++        header.addWidget(self._clear_btn)
++        layout.addLayout(header)
++
+         self._chat_display = QTextEdit()
+         self._chat_display.setReadOnly(True)
+         self._chat_display.setStyleSheet(
+             "QTextEdit { background-color: #f5f5f5; border: 1px solid #ddd; "
+             "border-radius: 8px; padding: 8px; font-size: 14px; }"
+         )
+         layout.addWidget(self._chat_display, stretch=1)
+ 
++        self._status_label = QLabel("")
++        self._status_label.setStyleSheet("QLabel { color: #888; font-size: 12px; }")
++        layout.addWidget(self._status_label)
++
+         input_layout = QHBoxLayout()
+         self._input_field = QLineEdit()
+         self._input_field.setPlaceholderText("输入消息...")
+         self._input_field.setStyleSheet(
+             "QLineEdit { border: 1px solid #ccc; border-radius: 6px; "
+             "padding: 8px; font-size: 14px; }"
+         )
+         self._input_field.returnPressed.connect(self._on_send)
+         input_layout.addWidget(self._input_field, stretch=1)
+ 
+@@ -51,23 +66,89 @@ class ChatWidget(QWidget):
+         if text:
+             self.append_message("user", text)
+             self._input_field.clear()
+             self.message_sent.emit(text)
+ 
+     def append_message(self, role: str, content: str):
+         if role == "user":
+             self._chat_display.append(
+                 f'<div style="text-align:right; margin:4px 0;">'
+                 f'<span style="background-color:#DCF8C6; padding:6px 10px; '
+-                f'border-radius:8px; display:inline-block;">{content}</span></div>'
++                f'border-radius:8px;">{content}</span></div>'
++            )
++        elif role == "system":
++            self._chat_display.append(
++                f'<div style="text-align:center; margin:4px 0;">'
++                f'<span style="color:#888; font-size:12px;">{content}</span></div>'
+             )
+         else:
+             self._chat_display.append(
+                 f'<div style="text-align:left; margin:4px 0;">'
+                 f'<span style="background-color:#FFFFFF; padding:6px 10px; '
+-                f'border-radius:8px; border:1px solid #eee; display:inline-block;">'
+-                f'{content}</span></div>'
++                f'border-radius:8px; border:1px solid #eee;">{content}</span></div>'
++            )
++
++    def handle_stream_event(self, event: dict):
++        etype = event.get("event_type", "")
++        content = event.get("content", "")
++        metadata = event.get("metadata", {})
++
++        if etype == "status":
++            self._status_label.setText(content)
++
++        elif etype == "thinking":
++            if not self._current_thinking:
++                self._chat_display.append(
++                    '<div style="margin:4px 0; padding:6px; background-color:#f0f0f0; '
++                    'border-radius:6px; color:#666; font-size:12px;">'
++                    '🧠 思考中...<br>'
++                )
++                self._current_thinking = True
++            cursor = self._chat_display.textCursor()
++            cursor.movePosition(cursor.MoveOperation.End)
++            cursor.insertText(content)
++
++        elif etype == "tool_use":
++            if self._current_thinking:
++                self._chat_display.append("</div>")
++                self._current_thinking = False
++            input_str = ""
++            inp = metadata.get("input", {})
++            if inp:
++                params = ", ".join(f'{k}="{v}"' for k, v in inp.items())
++                input_str = f"<br>  参数: {params}"
++            self._chat_display.append(
++                f'<div style="margin:2px 0; color:#2196F3; font-size:12px;">'
++                f'🔧 调用: {content}{input_str}</div>'
++            )
++            self._status_label.setText(f"调用工具: {content}...")
++
++        elif etype == "tool_result":
++            display = content[:100] + "..." if len(content) > 100 else content
++            self._chat_display.append(
++                f'<div style="margin:2px 0; color:#4CAF50; font-size:12px;">'
++                f'✓ {display}</div>'
+             )
+ 
++        elif etype == "text":
++            if self._current_thinking:
++                self._chat_display.append("</div>")
++                self._current_thinking = False
++            cursor = self._chat_display.textCursor()
++            cursor.movePosition(cursor.MoveOperation.End)
++            cursor.insertText(content)
++            self._status_label.setText("生成回复...")
++
++        elif etype == "done":
++            if self._current_thinking:
++                self._chat_display.append("</div>")
++                self._current_thinking = False
++            self._status_label.setText("")
++
++    def clear_chat(self):
++        self._chat_display.clear()
++        self._status_label.setText("")
++        self._current_thinking = False
++
+     def set_input_enabled(self, enabled: bool):
+         self._input_field.setEnabled(enabled)
+         self._send_button.setEnabled(enabled)
+diff --git a/ui/overview_widget.py b/ui/overview_widget.py
+new file mode 100644
+index 0000000..14a0b7e
+--- /dev/null
++++ b/ui/overview_widget.py
+@@ -0,0 +1,58 @@
++# ui/overview_widget.py
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from datetime import datetime
++
++from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea
++from PyQt6.QtCore import Qt
++
++
++class OverviewWidget(QWidget):
++    def __init__(self, parent=None):
++        super().__init__(parent)
++        layout = QVBoxLayout(self)
++        layout.setContentsMargins(12, 12, 12, 12)
++
++        header = QLabel("📊 今日概览")
++        header.setStyleSheet("font-size: 16px; font-weight: bold;")
++        layout.addWidget(header)
++
++        scroll = QScrollArea()
++        scroll.setWidgetResizable(True)
++        scroll.setStyleSheet("QScrollArea { border: none; }")
++        self._content = QLabel("加载中...")
++        self._content.setWordWrap(True)
++        self._content.setAlignment(Qt.AlignmentFlag.AlignTop)
++        self._content.setStyleSheet("QLabel { font-size: 14px; padding: 8px; }")
++        scroll.setWidget(self._content)
++        layout.addWidget(scroll, stretch=1)
++
++    def refresh(self, stats_dir: str, index_dir: str):
++        today = datetime.now().strftime("%Y-%m-%d")
++        lines = []
++
++        stats_path = Path(stats_dir) / f"{today}.json"
++        if stats_path.exists():
++            data = json.loads(stats_path.read_text(encoding="utf-8"))
++            m = data.get("monitor", {})
++            c = data.get("chat", {})
++            lines.append(f"截图次数    {m.get('screenshots_total', 0)}")
++            lines.append(f"深度活动    {m.get('engaged_sessions', 0)} 次")
++            avg_dur = m.get("engaged_avg_duration_sec", 0)
++            total_min = round(m.get("engaged_sessions", 0) * avg_dur / 60, 1)
++            lines.append(f"总活动时长  {total_min} 分钟")
++            lines.append(f"浏览次数    {m.get('browsing_sessions', 0)} 次")
++            lines.append(f"摘要生成    {m.get('summaries_generated', 0)} 次")
++            lines.append(f"对话消息    {c.get('messages_total', 0)} 条")
++        else:
++            lines.append("暂无统计数据")
++
++        index_path = Path(index_dir) / f"{today}.md"
++        if index_path.exists():
++            content = index_path.read_text(encoding="utf-8")
++            activity_count = len([l for l in content.split("\n") if l.strip().startswith("- ")])
++            lines.insert(1, f"识别活动    {activity_count} 条")
++
++        self._content.setText("\n".join(lines))
+diff --git a/ui/settings_widget.py b/ui/settings_widget.py
+new file mode 100644
+index 0000000..bdd6247
+--- /dev/null
++++ b/ui/settings_widget.py
+@@ -0,0 +1,128 @@
++# ui/settings_widget.py
++from __future__ import annotations
++
++import os
++from pathlib import Path
++
++import requests
++import yaml
++from PyQt6.QtWidgets import (
++    QWidget, QVBoxLayout, QFormLayout, QLabel, QComboBox,
++    QSlider, QSpinBox, QPushButton, QCheckBox, QHBoxLayout,
++)
++from PyQt6.QtCore import Qt
++
++
++class SettingsWidget(QWidget):
++    def __init__(self, config: dict, config_path: str, on_config_changed: callable, parent=None):
++        super().__init__(parent)
++        self._config = config
++        self._config_path = config_path
++        self._on_config_changed = on_config_changed
++        self._setup_ui()
++
++    def _setup_ui(self):
++        layout = QVBoxLayout(self)
++        layout.setContentsMargins(12, 12, 12, 12)
++
++        header = QLabel("⚙️ 设置")
++        header.setStyleSheet("font-size: 16px; font-weight: bold;")
++        layout.addWidget(header)
++
++        form = QFormLayout()
++        form.setSpacing(12)
++
++        self._model_combo = QComboBox()
++        self._refresh_models()
++        refresh_btn = QPushButton("刷新")
++        refresh_btn.setFixedWidth(50)
++        refresh_btn.clicked.connect(self._refresh_models)
++        model_row = QHBoxLayout()
++        model_row.addWidget(self._model_combo, stretch=1)
++        model_row.addWidget(refresh_btn)
++        form.addRow("Ollama 模型", model_row)
++
++        self._interval_slider = QSlider(Qt.Orientation.Horizontal)
++        self._interval_slider.setRange(10, 60)
++        self._interval_slider.setValue(self._config["monitor"]["interval_seconds"])
++        self._interval_label = QLabel(f"{self._interval_slider.value()}s")
++        self._interval_slider.valueChanged.connect(lambda v: self._interval_label.setText(f"{v}s"))
++        interval_row = QHBoxLayout()
++        interval_row.addWidget(self._interval_slider, stretch=1)
++        interval_row.addWidget(self._interval_label)
++        form.addRow("截图间隔", interval_row)
++
++        self._threshold_slider = QSlider(Qt.Orientation.Horizontal)
++        self._threshold_slider.setRange(3, 10)
++        self._threshold_slider.setValue(self._config["monitor"]["engage_threshold"])
++        self._threshold_label = QLabel(f"{self._threshold_slider.value()} 次")
++        self._threshold_slider.valueChanged.connect(lambda v: self._threshold_label.setText(f"{v} 次"))
++        threshold_row = QHBoxLayout()
++        threshold_row.addWidget(self._threshold_slider, stretch=1)
++        threshold_row.addWidget(self._threshold_label)
++        form.addRow("深度活动阈值", threshold_row)
++
++        self._screenshot_days = QSpinBox()
++        self._screenshot_days.setRange(1, 90)
++        self._screenshot_days.setValue(self._config["screenshots"]["retention_days"])
++        form.addRow("截图保留天数", self._screenshot_days)
++
++        self._ocr_days = QSpinBox()
++        self._ocr_days.setRange(1, 90)
++        self._ocr_days.setValue(self._config.get("ocr", {}).get("retention_days", 7))
++        form.addRow("OCR 保留天数", self._ocr_days)
++
++        self._log_days = QSpinBox()
++        self._log_days.setRange(1, 365)
++        self._log_days.setValue(self._config.get("logs", {}).get("retention_days", 30))
++        form.addRow("日志保留天数", self._log_days)
++
++        layout.addLayout(form)
++        layout.addStretch()
++
++        save_btn = QPushButton("保存设置")
++        save_btn.setStyleSheet(
++            "QPushButton { background-color: #4CAF50; color: white; "
++            "border: none; border-radius: 6px; padding: 10px; font-size: 14px; }"
++        )
++        save_btn.clicked.connect(self._save)
++        layout.addWidget(save_btn)
++
++    def _refresh_models(self):
++        self._model_combo.clear()
++        base_url = self._config["llm"]["local"]["base_url"]
++        try:
++            resp = requests.get(f"{base_url}/api/tags", timeout=3)
++            if resp.status_code == 200:
++                models = [m["name"] for m in resp.json().get("models", [])]
++                self._model_combo.addItems(models)
++                current = self._config["llm"]["local"]["model"]
++                idx = self._model_combo.findText(current)
++                if idx >= 0:
++                    self._model_combo.setCurrentIndex(idx)
++        except Exception:
++            self._model_combo.addItem(self._config["llm"]["local"]["model"])
++
++    def _save(self):
++        if not os.path.exists(self._config_path):
++            config_data = {}
++        else:
++            with open(self._config_path, "r", encoding="utf-8") as f:
++                config_data = yaml.safe_load(f) or {}
++
++        config_data.setdefault("monitor", {})["interval_seconds"] = self._interval_slider.value()
++        config_data["monitor"]["engage_threshold"] = self._threshold_slider.value()
++        config_data.setdefault("screenshots", {})["retention_days"] = self._screenshot_days.value()
++        config_data.setdefault("ocr", {})["retention_days"] = self._ocr_days.value()
++        config_data.setdefault("logs", {})["retention_days"] = self._log_days.value()
++        model = self._model_combo.currentText()
++        if model:
++            config_data.setdefault("llm", {}).setdefault("local", {})["model"] = model
++
++        with open(self._config_path, "w", encoding="utf-8") as f:
++            yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False)
++
++        from app.config import load_config
++        new_config = load_config(self._config_path)
++        self._config = new_config
++        self._on_config_changed(new_config)
+diff --git a/ui/tray_app.py b/ui/tray_app.py
+new file mode 100644
+index 0000000..e51fe9f
+--- /dev/null
++++ b/ui/tray_app.py
+@@ -0,0 +1,137 @@
++# ui/tray_app.py
++from __future__ import annotations
++
++from PyQt6.QtWidgets import (
++    QSystemTrayIcon, QMenu, QWidget, QVBoxLayout, QTabWidget, QApplication,
++)
++from PyQt6.QtGui import QIcon, QAction, QPixmap, QPainter, QFont, QColor
++from PyQt6.QtCore import Qt, QPoint
++
++from ui.chat_widget import ChatWidget
++from ui.overview_widget import OverviewWidget
++from ui.activity_log_widget import ActivityLogWidget
++from ui.settings_widget import SettingsWidget
++
++
++def _create_text_icon(text: str = "🧠") -> QIcon:
++    pixmap = QPixmap(32, 32)
++    pixmap.fill(QColor(0, 0, 0, 0))
++    painter = QPainter(pixmap)
++    painter.setFont(QFont("Arial", 20))
++    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, text)
++    painter.end()
++    return QIcon(pixmap)
++
++
++class TrayApp:
++    def __init__(self, config: dict, config_path: str, on_message_sent: callable):
++        self._config = config
++        self._config_path = config_path
++        self._on_message_sent = on_message_sent
++        self._monitor_running = False
++        self._agent_connected = False
++
++        self.tray_icon = QSystemTrayIcon(_create_text_icon())
++        self.tray_icon.setToolTip("逗叽脑袋 - 桌面宠物 Agent")
++        self.tray_icon.activated.connect(self._on_tray_activated)
++
++        self._build_context_menu()
++        self._build_panel()
++
++        self.tray_icon.show()
++
++    def _build_context_menu(self):
++        menu = QMenu()
++        self._monitor_action = QAction("监控: 已停止")
++        self._monitor_action.setEnabled(False)
++        menu.addAction(self._monitor_action)
++
++        self._agent_action = QAction("Agent: 未连接")
++        self._agent_action.setEnabled(False)
++        menu.addAction(self._agent_action)
++
++        menu.addSeparator()
++
++        open_dir_action = QAction("打开数据目录")
++        open_dir_action.triggered.connect(self._open_data_dir)
++        menu.addAction(open_dir_action)
++
++        quit_action = QAction("退出")
++        quit_action.triggered.connect(QApplication.quit)
++        menu.addAction(quit_action)
++
++        self.tray_icon.setContextMenu(menu)
++
++    def _build_panel(self):
++        self.panel = QWidget()
++        self.panel.setWindowTitle("逗叽脑袋")
++        self.panel.setFixedSize(420, 520)
++        self.panel.setWindowFlags(
++            Qt.WindowType.WindowStaysOnTopHint
++            | Qt.WindowType.FramelessWindowHint
++            | Qt.WindowType.Tool
++        )
++
++        layout = QVBoxLayout(self.panel)
++        layout.setContentsMargins(0, 0, 0, 0)
++
++        tabs = QTabWidget()
++        tabs.setStyleSheet("QTabBar::tab { padding: 6px 12px; font-size: 13px; }")
++
++        self.chat_widget = ChatWidget()
++        self.chat_widget.message_sent.connect(self._on_message_sent)
++        tabs.addTab(self.chat_widget, "💬 聊天")
++
++        self.overview_widget = OverviewWidget()
++        tabs.addTab(self.overview_widget, "📊 概览")
++
++        self.activity_log_widget = ActivityLogWidget()
++        tabs.addTab(self.activity_log_widget, "📋 日志")
++
++        self.settings_widget = SettingsWidget(
++            config=self._config,
++            config_path=self._config_path,
++            on_config_changed=self._on_config_changed,
++        )
++        tabs.addTab(self.settings_widget, "⚙️ 设置")
++
++        layout.addWidget(tabs)
++
++    def _on_tray_activated(self, reason):
++        if reason == QSystemTrayIcon.ActivationReason.Trigger:
++            if self.panel.isVisible():
++                self.hide_panel()
++            else:
++                self.show_panel()
++
++    def show_panel(self):
++        geo = self.tray_icon.geometry()
++        panel_x = geo.x() + geo.width() // 2 - self.panel.width() // 2
++        panel_y = geo.y() + geo.height()
++        self.panel.move(QPoint(panel_x, panel_y))
++        self.panel.show()
++        self.panel.raise_()
++        self.panel.activateWindow()
++
++    def hide_panel(self):
++        self.panel.hide()
++
++    def update_monitor_status(self, running: bool):
++        self._monitor_running = running
++        text = "监控: 运行中 ✓" if running else "监控: 已停止"
++        self._monitor_action.setText(text)
++
++    def update_agent_status(self, connected: bool):
++        self._agent_connected = connected
++        text = "Agent: 已连接 ✓" if connected else "Agent: 未连接"
++        self._agent_action.setText(text)
++
++    def _on_config_changed(self, new_config: dict):
++        self._config = new_config
++
++    def _open_data_dir(self):
++        import subprocess
++        import os
++        data_dir = os.path.expanduser("~/.pet-memory")
++        os.makedirs(data_dir, exist_ok=True)
++        subprocess.Popen(["open", data_dir])

@@ -1,0 +1,30 @@
+llm:
+  local:
+    base_url: http://localhost:11434
+    model: qwen3:8b
+    provider: ollama
+logs:
+  retention_days: 30
+memory:
+  base_dir: ~/.pet-memory
+  embedding_model: bge-small-zh
+monitor:
+  enabled: true
+  engage_threshold: 3
+  idle_timeout_seconds: 120
+  interval_seconds: 10
+  scenes:
+  - reading
+  - writing
+ocr:
+  engine: ollama_vision
+  lang: ch
+  retention_days: 7
+  vision_model: minicpm-v
+screenshots:
+  cleanup_similarity: 0.9
+  quality: 75
+  retention_days: 7
+ui:
+  window_height: 600
+  window_width: 400

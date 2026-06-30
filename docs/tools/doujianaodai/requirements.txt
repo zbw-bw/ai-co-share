@@ -1,0 +1,11 @@
+PyQt6>=6.6.0
+pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+psutil>=5.9.0
+Pillow>=10.0.0
+paddleocr>=2.7.0
+paddlepaddle>=2.6.0
+scikit-image>=0.22.0
+numpy>=1.26.0
+PyYAML>=6.0
+requests>=2.31.0

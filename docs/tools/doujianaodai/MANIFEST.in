@@ -1,0 +1,4 @@
+include config.yaml
+include LICENSE
+include README.md
+include pet_mcp_server.py
